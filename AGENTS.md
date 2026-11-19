@@ -28,3 +28,6 @@ use the editor.
   own key and store it in Secrets.
 - **Secrets.** Lovable manages them. Do not put secret values in the repo.
 <!-- LOVABLE:END -->
+
+## Application guidance
+- Keep dashboard examples in their own presentation modules and clearly label sample figures as previews; this prevents mock records from being mistaken for live transactions.
