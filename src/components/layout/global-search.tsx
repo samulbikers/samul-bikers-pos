@@ -13,13 +13,15 @@ import {
   CommandShortcut,
 } from "@/components/ui/command";
 import { navigationGroups } from "@/components/layout/nav";
-import { sampleProducts } from "@/data/sample/catalog";
-import { sampleCustomers } from "@/data/sample/people";
-import { sampleSales } from "@/data/sample/operations";
+import { useCustomers, useProducts, useSales } from "@/lib/supabase/queries";
+import { formatKes } from "@/lib/format";
 
 export function GlobalSearch() {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
+  const productsQuery = useProducts();
+  const salesQuery = useSales(25);
+  const customersQuery = useCustomers();
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -50,7 +52,12 @@ export function GlobalSearch() {
         <kbd className="rounded border border-border px-1 font-sans text-[9px]">⌘K</kbd>
       </button>
 
-      <CommandDialog open={open} onOpenChange={setOpen} title="Search Samul Bikers POS" description="Find pages, products, sales and customers">
+      <CommandDialog
+        open={open}
+        onOpenChange={setOpen}
+        title="Search Samul Bikers POS"
+        description="Find pages, products, sales and customers"
+      >
         <CommandInput placeholder="Search products, receipts, pages..." />
         <CommandList>
           <CommandEmpty>No results found.</CommandEmpty>
@@ -67,40 +74,41 @@ export function GlobalSearch() {
           </CommandGroup>
           <CommandSeparator />
           <CommandGroup heading="Products">
-            {sampleProducts.slice(0, 6).map((product) => (
+            {(productsQuery.data ?? []).slice(0, 6).map((product) => (
               <CommandItem
                 key={product.id}
-                value={`product ${product.name} ${product.sku}`}
+                value={`product ${product.title} ${product.sku}`}
                 onSelect={() => go("/products")}
               >
                 <ShoppingBag aria-hidden="true" className="mr-2 size-4" />
-                {product.name}
+                <span className="truncate">{product.title}</span>
                 <CommandShortcut>{product.sku}</CommandShortcut>
               </CommandItem>
             ))}
           </CommandGroup>
           <CommandGroup heading="Sales">
-            {sampleSales.slice(0, 5).map((sale) => (
+            {(salesQuery.data ?? []).slice(0, 5).map((sale) => (
               <CommandItem
                 key={sale.id}
-                value={`sale ${sale.receipt} ${sale.customer}`}
+                value={`sale ${sale.receipt} ${sale.customer_name}`}
                 onSelect={() => go("/sales")}
               >
                 <ReceiptText aria-hidden="true" className="mr-2 size-4" />
-                {sale.receipt} · {sale.customer}
+                {sale.receipt} · {sale.customer_name}
+                <CommandShortcut>{formatKes(Number(sale.total))}</CommandShortcut>
               </CommandItem>
             ))}
           </CommandGroup>
           <CommandGroup heading="Customers">
-            {sampleCustomers.slice(0, 5).map((customer) => (
+            {(customersQuery.data ?? []).slice(0, 5).map((customer) => (
               <CommandItem
                 key={customer.id}
-                value={`customer ${customer.name} ${customer.phone}`}
+                value={`customer ${customer.name} ${customer.phone ?? ""}`}
                 onSelect={() => go("/customers")}
               >
                 <ContactRound aria-hidden="true" className="mr-2 size-4" />
                 {customer.name}
-                <CommandShortcut>{customer.location}</CommandShortcut>
+                <CommandShortcut>{customer.location ?? customer.tier}</CommandShortcut>
               </CommandItem>
             ))}
           </CommandGroup>

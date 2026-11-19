@@ -16,6 +16,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+import { canAccessPath, type AppRole } from "@/lib/auth/roles";
+
 export type NavItem = {
   label: string;
   to: string;
@@ -28,6 +30,17 @@ export type NavGroup = {
   label: string;
   items: NavItem[];
 };
+
+export function navigationForRole(role: AppRole | null | undefined): NavGroup[] {
+  if (!role) return navigationGroups;
+
+  return navigationGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => canAccessPath(role, item.to)),
+    }))
+    .filter((group) => group.items.length > 0);
+}
 
 export const navigationGroups: NavGroup[] = [
   {

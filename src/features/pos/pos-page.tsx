@@ -13,7 +13,7 @@ import {
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import { PreviewBadge } from "@/components/data/preview-badge";
+import { EmptyState, QueryError, QueryLoading, SupabaseNotice } from "@/components/data/query-state";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,97 +32,140 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { sampleCategories, sampleProducts, type Product } from "@/data/sample/catalog";
-import { categoryImages, categoryAltText, type ProductCategory } from "@/data/sample/images";
-import { sampleCustomers } from "@/data/sample/people";
-import type { PaymentMethod } from "@/data/sample/operations";
+import { useCustomers, useProducts, useSiteSettings, type CatalogProduct } from "@/lib/supabase/queries";
+import { useCompleteSale } from "@/lib/supabase/mutations";
 import { formatKes } from "@/lib/format";
 
 const VAT_RATE = 0.16;
-const categories: Array<ProductCategory | "All"> = ["All", ...sampleCategories.map((item) => item.name)];
+type PaymentMethod = "M-Pesa" | "Cash" | "Card";
 
-type CartLine = { productId: string; quantity: number };
+type CartLine = { product: CatalogProduct; quantity: number };
 
 const paymentOptions: { method: PaymentMethod; icon: typeof Banknote; hint: string }[] = [
-  { method: "M-Pesa", icon: Smartphone, hint: "Till 884210" },
+  { method: "M-Pesa", icon: Smartphone, hint: "Till / paybill" },
   { method: "Cash", icon: Banknote, hint: "Counter cash" },
   { method: "Card", icon: CreditCard, hint: "PDQ terminal" },
 ];
 
-function nextReceiptNumber() {
-  return `SBH-${String(2482 + Math.floor(Math.random() * 40)).padStart(5, "0")}`;
+function ProductImage({ product, className }: { product: CatalogProduct; className: string }) {
+  if (product.image) {
+    return <img src={product.image} alt={product.title} className={`${className} object-cover`} loading="lazy" />;
+  }
+
+  return (
+    <span className={`${className} flex items-center justify-center bg-muted text-muted-foreground`}>
+      <ShoppingCart aria-hidden="true" className="size-5" />
+    </span>
+  );
 }
 
 export function PosPage() {
-  const [category, setCategory] = useState<ProductCategory | "All">("All");
+  const productsQuery = useProducts();
+  const customersQuery = useCustomers();
+  const settingsQuery = useSiteSettings();
+  const completeSale = useCompleteSale();
+
+  const [category, setCategory] = useState("All");
   const [query, setQuery] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
   const [customerId, setCustomerId] = useState("walk-in");
   const [method, setMethod] = useState<PaymentMethod>("M-Pesa");
   const [discount, setDiscount] = useState("0");
-  const [completed, setCompleted] = useState<{ receipt: string; total: number; method: PaymentMethod } | null>(null);
+  const [completed, setCompleted] = useState<{ receipt: string; total: number; method: PaymentMethod; customer: string } | null>(null);
 
-  const products = useMemo(() => {
+  const products = productsQuery.data ?? [];
+  const customers = customersQuery.data ?? [];
+
+  const categories = useMemo(() => {
+    const names = new Set(products.map((product) => product.categoryName));
+    return ["All", ...Array.from(names).sort()];
+  }, [products]);
+
+  const visibleProducts = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return sampleProducts.filter((product) => {
-      const matchesCategory = category === "All" || product.category === category;
-      const matchesQuery = !needle || `${product.name} ${product.sku}`.toLowerCase().includes(needle);
+    return products.filter((product) => {
+      const matchesCategory = category === "All" || product.categoryName === category;
+      const matchesQuery = !needle || `${product.title} ${product.sku}`.toLowerCase().includes(needle);
       return matchesCategory && matchesQuery;
     });
-  }, [category, query]);
+  }, [products, category, query]);
 
-  const lines = cart.flatMap((line) => {
-    const product = sampleProducts.find((item) => item.id === line.productId);
-    return product ? [{ product, quantity: line.quantity }] : [];
-  });
-
-  const subtotal = lines.reduce((sum, line) => sum + line.product.price * line.quantity, 0);
+  const subtotal = cart.reduce((sum, line) => sum + line.product.price * line.quantity, 0);
   const discountValue = Math.min(Math.max(Number(discount) || 0, 0), subtotal);
   const taxable = subtotal - discountValue;
   const vat = Math.round(taxable * VAT_RATE);
   const total = taxable + vat;
-  const itemCount = lines.reduce((sum, line) => sum + line.quantity, 0);
+  const itemCount = cart.reduce((sum, line) => sum + line.quantity, 0);
+  const customerLabel =
+    customerId === "walk-in"
+      ? "Walk-in customer"
+      : (customers.find((customer) => customer.id === customerId)?.name ?? "Walk-in customer");
 
-  const addToCart = (product: Product) => {
+  const addToCart = (product: CatalogProduct) => {
+    if (product.stock <= 0) {
+      toast.error(`${product.title} is out of stock`);
+      return;
+    }
     setCart((current) => {
-      const existing = current.find((line) => line.productId === product.id);
-      if (existing) {
-        return current.map((line) =>
-          line.productId === product.id ? { ...line, quantity: line.quantity + 1 } : line,
-        );
+      const existing = current.find((line) => line.product.id === product.id);
+      if (!existing) return [...current, { product, quantity: 1 }];
+      if (existing.quantity >= product.stock) {
+        toast.warning(`Only ${product.stock} unit(s) of ${product.title} in stock`);
+        return current;
       }
-      return [...current, { productId: product.id, quantity: 1 }];
+      return current.map((line) =>
+        line.product.id === product.id ? { ...line, quantity: line.quantity + 1 } : line,
+      );
     });
   };
 
   const changeQuantity = (productId: string, delta: number) => {
     setCart((current) =>
       current
-        .map((line) =>
-          line.productId === productId ? { ...line, quantity: line.quantity + delta } : line,
-        )
+        .map((line) => {
+          if (line.product.id !== productId) return line;
+          const next = line.quantity + delta;
+          if (next > line.product.stock) {
+            toast.warning(`Only ${line.product.stock} unit(s) available`);
+            return line;
+          }
+          return { ...line, quantity: next };
+        })
         .filter((line) => line.quantity > 0),
     );
   };
 
-  const completeSale = () => {
-    if (!lines.length) {
+  const handleComplete = async () => {
+    if (!cart.length) {
       toast.error("Add a product before completing the sale.");
       return;
     }
-    const receipt = nextReceiptNumber();
-    setCompleted({ receipt, total, method });
-    toast.success(`Sale ${receipt} recorded`, {
-      description: `${formatKes(total)} · ${method} · preview only`,
-    });
-    setCart([]);
-    setDiscount("0");
-  };
 
-  const customerLabel =
-    customerId === "walk-in"
-      ? "Walk-in customer"
-      : (sampleCustomers.find((customer) => customer.id === customerId)?.name ?? "Walk-in customer");
+    try {
+      const sale = await completeSale.mutateAsync({
+        customerId: customerId === "walk-in" ? null : customerId,
+        customerName: customerLabel,
+        cashier: "Store manager",
+        paymentMethod: method,
+        discount: discountValue,
+        lines: cart.map((line) => ({
+          product_id: line.product.id,
+          product_title: line.product.title,
+          quantity: line.quantity,
+          unit_price: line.product.price,
+        })),
+      });
+
+      setCompleted({ receipt: sale.receipt, total: Number(sale.total), method, customer: customerLabel });
+      setCart([]);
+      setDiscount("0");
+      toast.success(`Sale ${sale.receipt} recorded`, { description: `${formatKes(Number(sale.total))} · ${method}` });
+    } catch (error) {
+      toast.error("Could not record the sale", {
+        description: error instanceof Error ? error.message : "Unexpected error",
+      });
+    }
+  };
 
   const cartPanel = (suffix: string) => (
     <div className="flex h-full min-h-0 flex-col">
@@ -137,7 +180,7 @@ export function PosPage() {
           className="mt-1 h-9 w-full cursor-pointer rounded-md border border-border bg-card px-2.5 text-[11px] font-medium text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <option value="walk-in">Walk-in customer</option>
-          {sampleCustomers.map((customer) => (
+          {customers.map((customer) => (
             <option key={customer.id} value={customer.id}>
               {customer.name} · {customer.tier}
             </option>
@@ -146,22 +189,18 @@ export function PosPage() {
       </div>
 
       <div className="dashboard-table-scroller min-h-0 flex-1 overflow-y-auto px-4 py-3">
-        {lines.length ? (
+        {cart.length ? (
           <ul className="space-y-3">
-            {lines.map(({ product, quantity }) => (
+            {cart.map(({ product, quantity }) => (
               <li key={product.id} className="flex gap-2.5">
-                <img
-                  src={categoryImages[product.category]}
-                  alt={categoryAltText[product.category]}
-                  className="size-11 shrink-0 rounded-md border border-border object-cover"
-                />
+                <ProductImage product={product} className="size-11 shrink-0 rounded-md border border-border" />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start justify-between gap-2">
-                    <p className="truncate text-[11px] font-medium text-card-foreground">{product.name}</p>
+                    <p className="truncate text-[11px] font-medium text-card-foreground">{product.title}</p>
                     <button
                       type="button"
                       onClick={() => changeQuantity(product.id, -quantity)}
-                      aria-label={`Remove ${product.name} from cart`}
+                      aria-label={`Remove ${product.title} from cart`}
                       className="shrink-0 text-muted-foreground transition-colors hover:text-destructive"
                     >
                       <X className="size-3.5" />
@@ -175,18 +214,16 @@ export function PosPage() {
                       <button
                         type="button"
                         onClick={() => changeQuantity(product.id, -1)}
-                        aria-label={`Reduce quantity of ${product.name}`}
+                        aria-label={`Reduce quantity of ${product.title}`}
                         className="flex size-7 items-center justify-center text-muted-foreground hover:text-foreground"
                       >
                         <Minus className="size-3" />
                       </button>
-                      <span className="w-7 text-center text-[11px] font-semibold text-card-foreground">
-                        {quantity}
-                      </span>
+                      <span className="w-7 text-center text-[11px] font-semibold text-card-foreground">{quantity}</span>
                       <button
                         type="button"
                         onClick={() => changeQuantity(product.id, 1)}
-                        aria-label={`Increase quantity of ${product.name}`}
+                        aria-label={`Increase quantity of ${product.title}`}
                         className="flex size-7 items-center justify-center text-muted-foreground hover:text-foreground"
                       >
                         <Plus className="size-3" />
@@ -204,7 +241,7 @@ export function PosPage() {
           <div className="flex h-full min-h-[160px] flex-col items-center justify-center gap-2 rounded-md border border-dashed border-border px-4 py-8 text-center">
             <ShoppingCart aria-hidden="true" className="size-6 text-muted-foreground" />
             <p className="text-[11px] font-medium text-card-foreground">Cart is empty</p>
-            <p className="text-[10px] text-muted-foreground">Tap a product to start a sample sale.</p>
+            <p className="text-[10px] text-muted-foreground">Tap a product to start a sale.</p>
           </div>
         )}
       </div>
@@ -265,15 +302,15 @@ export function PosPage() {
 
         <Button
           type="button"
-          onClick={completeSale}
-          disabled={!lines.length}
+          onClick={handleComplete}
+          disabled={!cart.length || completeSale.isPending}
           className="mt-3 h-10 w-full gap-2 text-[12px] font-semibold"
         >
           <Check aria-hidden="true" className="size-4" />
-          Complete sale · {formatKes(total)}
+          {completeSale.isPending ? "Recording sale..." : `Complete sale · ${formatKes(total)}`}
         </Button>
         <p className="mt-2 text-center text-[9px] text-muted-foreground">
-          Preview only · No payment is captured
+          Records to Supabase · stock is updated automatically
         </p>
       </div>
     </div>
@@ -283,63 +320,60 @@ export function PosPage() {
     <>
       <PageHeader
         title="Point of sale"
-        description="Ring up a sample sale, take payment and issue a preview receipt."
+        description="Ring up a sale, take payment and issue a receipt. Sales are saved to the shop database."
         meta={
           <>
-            <PreviewBadge />
+            {productsQuery.isSuccess && (
+              <span className="inline-flex h-6 items-center gap-1.5 rounded-md border border-emerald/30 bg-emerald-subtle px-2 text-[10px] font-medium text-emerald">
+                <span aria-hidden="true" className="size-[7px] rounded-full bg-emerald" />
+                Live catalogue · {products.length} products
+              </span>
+            )}
             <span className="inline-flex h-6 items-center gap-1.5 rounded-md border border-border bg-card px-2 text-[10px] font-medium text-foreground">
-              <span aria-hidden="true" className="size-[7px] rounded-full bg-emerald" />
-              Till 01 · Lucy Achieng
+              Till 01 · Store manager
             </span>
-            <span className="text-[10px] text-muted-foreground">Shift open · 08:00</span>
           </>
         }
         actions={
-          <>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-9 gap-1.5"
-              onClick={() => {
-                setCart([]);
-                setDiscount("0");
-                toast.info("New sale started");
-              }}
-            >
-              <ScanLine aria-hidden="true" className="size-3.5" />
-              New sale
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-9 gap-1.5"
-              disabled={!lines.length}
-              onClick={() => toast.success("Sample sale held", { description: `${itemCount} item(s) parked for later.` })}
-            >
-              <ReceiptText aria-hidden="true" className="size-3.5" />
-              Hold sale
-            </Button>
-          </>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-9 gap-1.5"
+            onClick={() => {
+              setCart([]);
+              setDiscount("0");
+              toast.info("New sale started");
+            }}
+          >
+            <ScanLine aria-hidden="true" className="size-3.5" />
+            New sale
+          </Button>
         }
       />
 
+      <SupabaseNotice />
+      {productsQuery.isError && <QueryError error={productsQuery.error} label="Could not load the catalogue" />}
+      {customersQuery.isError && <QueryError error={customersQuery.error} label="Could not load customers" />}
+
       <div className="grid min-h-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <section aria-label="Product catalogue" className="min-w-0 rounded-lg border border-border bg-card p-4 shadow-[0_1px_2px_var(--card-shadow)] sm:p-5">
+        <section
+          aria-label="Product catalogue"
+          className="min-w-0 rounded-lg border border-border bg-card p-4 shadow-[0_1px_2px_var(--card-shadow)] sm:p-5"
+        >
           <div className="flex flex-wrap items-center gap-2">
             <label className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md border border-border bg-background px-3 focus-within:border-ring">
               <ScanLine aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
               <span className="sr-only">Search catalogue</span>
               <input
                 aria-label="Search catalogue"
-                placeholder="Scan barcode or search products..."
+                placeholder="Search product or SKU..."
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 className="h-full w-full min-w-0 bg-transparent text-[11px] outline-none placeholder:text-muted-foreground"
               />
             </label>
-            <span className="text-[10px] text-muted-foreground">{products.length} products</span>
+            <span className="text-[10px] text-muted-foreground">{visibleProducts.length} products</span>
           </div>
 
           <div className="mt-3 flex flex-wrap gap-1.5">
@@ -363,51 +397,60 @@ export function PosPage() {
             })}
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3 2xl:grid-cols-4">
-            {products.map((product) => {
-              const inCart = cart.find((line) => line.productId === product.id)?.quantity ?? 0;
-              const low = product.stock <= product.reorderLevel;
+          {productsQuery.isLoading ? (
+            <div className="mt-4">
+              <QueryLoading label="Loading the live catalogue..." />
+            </div>
+          ) : !products.length ? (
+            <div className="mt-4">
+              <EmptyState
+                title="No products in the database yet"
+                description="Add products in the shop website admin, then reload this page to sell them here."
+              />
+            </div>
+          ) : (
+            <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3 2xl:grid-cols-4">
+              {visibleProducts.map((product) => {
+                const inCart = cart.find((line) => line.product.id === product.id)?.quantity ?? 0;
+                const low = product.stock <= product.reorderLevel;
 
-              return (
-                <button
-                  key={product.id}
-                  type="button"
-                  onClick={() => addToCart(product)}
-                  aria-label={`Add ${product.name} to cart`}
-                  className="group relative overflow-hidden rounded-lg border border-border bg-background text-left transition-colors hover:border-amber/60 hover:bg-amber/[0.04]"
-                >
-                  <img
-                    src={categoryImages[product.category]}
-                    alt={categoryAltText[product.category]}
-                    className="h-24 w-full object-cover"
-                  />
-                  {inCart > 0 && (
-                    <span className="absolute right-1.5 top-1.5 flex size-5 items-center justify-center rounded-full bg-amber text-[10px] font-semibold text-background">
-                      {inCart}
-                    </span>
-                  )}
-                  <span className="block p-2.5">
-                    <span className="line-clamp-2 block min-h-[26px] text-[11px] font-medium leading-[1.3] text-card-foreground">
-                      {product.name}
-                    </span>
-                    <span className="mt-1.5 flex items-center justify-between gap-1">
-                      <span className="text-[11px] font-semibold text-card-foreground">
-                        {formatKes(product.price)}
+                return (
+                  <button
+                    key={product.id}
+                    type="button"
+                    onClick={() => addToCart(product)}
+                    aria-label={`Add ${product.title} to cart`}
+                    className="group relative overflow-hidden rounded-lg border border-border bg-background text-left transition-colors hover:border-amber/60 hover:bg-amber/[0.04]"
+                  >
+                    <ProductImage product={product} className="h-24 w-full" />
+                    {inCart > 0 && (
+                      <span className="absolute right-1.5 top-1.5 flex size-5 items-center justify-center rounded-full bg-amber text-[10px] font-semibold text-background">
+                        {inCart}
                       </span>
-                      <span className={`text-[9px] font-medium ${low ? "text-amber" : "text-muted-foreground"}`}>
-                        {product.stock} left
+                    )}
+                    <span className="block p-2.5">
+                      <span className="line-clamp-2 block min-h-[26px] text-[11px] font-medium leading-[1.3] text-card-foreground">
+                        {product.title}
+                      </span>
+                      <span className="mt-1.5 flex items-center justify-between gap-1">
+                        <span className="text-[11px] font-semibold text-card-foreground">
+                          {formatKes(product.price)}
+                        </span>
+                        <span className={`text-[9px] font-medium ${product.stock === 0 ? "text-destructive" : low ? "text-amber" : "text-muted-foreground"}`}>
+                          {product.stock} left
+                        </span>
                       </span>
                     </span>
-                  </span>
-                </button>
-              );
-            })}
-            {!products.length && (
-              <p className="col-span-full rounded-md border border-dashed border-border px-4 py-8 text-center text-[11px] text-muted-foreground">
-                No products match this search.
-              </p>
-            )}
-          </div>
+                  </button>
+                );
+              })}
+              {!visibleProducts.length && (
+                <p className="col-span-full rounded-md border border-dashed border-border px-4 py-8 text-center text-[11px] text-muted-foreground">
+                  No products match this search.
+                </p>
+              )}
+            </div>
+          )}
         </section>
 
         <aside
@@ -429,7 +472,7 @@ export function PosPage() {
           <SheetContent side="bottom" className="flex h-[85vh] max-h-[85vh] flex-col gap-0 rounded-t-xl p-0">
             <SheetHeader className="border-b border-border px-4 py-3 text-left">
               <SheetTitle className="text-[14px]">Current sale</SheetTitle>
-              <SheetDescription className="text-[10px]">{customerLabel} · preview</SheetDescription>
+              <SheetDescription className="text-[10px]">{customerLabel}</SheetDescription>
             </SheetHeader>
             <div className="flex min-h-0 flex-1 flex-col">{cartPanel("mobile")}</div>
           </SheetContent>
@@ -439,16 +482,16 @@ export function PosPage() {
       <Dialog open={Boolean(completed)} onOpenChange={(open) => !open && setCompleted(null)}>
         <DialogContent className="max-w-[380px]">
           <DialogHeader>
-            <DialogTitle className="text-[15px]">Preview receipt</DialogTitle>
-            <DialogDescription className="text-[11px]">
-              Sample receipt · no payment was captured.
-            </DialogDescription>
+            <DialogTitle className="text-[15px]">Receipt</DialogTitle>
+            <DialogDescription className="text-[11px]">Saved to the shop database.</DialogDescription>
           </DialogHeader>
           {completed && (
             <div className="rounded-lg border border-dashed border-border bg-muted/30 p-4 font-mono text-[11px]">
-              <p className="text-center text-[12px] font-semibold">SAMUL BIKERS HAVEN</p>
+              <p className="text-center text-[12px] font-semibold">
+                {(settingsQuery.data?.business_name ?? "SAMUL BIKERS").toUpperCase()}
+              </p>
               <p className="mt-0.5 text-center text-[10px] text-muted-foreground">
-                Kirinyaga Road, Nairobi · +254 720 000 114
+                {settingsQuery.data?.address_line1 ?? "Nairobi, Kenya"} · {settingsQuery.data?.phone ?? ""}
               </p>
               <div className="my-3 border-t border-dashed border-border" />
               <p className="flex justify-between">
@@ -457,7 +500,7 @@ export function PosPage() {
               </p>
               <p className="mt-1 flex justify-between">
                 <span className="text-muted-foreground">Customer</span>
-                <span>{customerLabel}</span>
+                <span>{completed.customer}</span>
               </p>
               <p className="mt-1 flex justify-between">
                 <span className="text-muted-foreground">Payment</span>
@@ -468,9 +511,7 @@ export function PosPage() {
                 <span>Total paid</span>
                 <span>{formatKes(completed.total)}</span>
               </p>
-              <p className="mt-3 text-center text-[9px] text-muted-foreground">
-                Asante sana · Ride safe
-              </p>
+              <p className="mt-3 text-center text-[9px] text-muted-foreground">Asante sana · Ride safe</p>
             </div>
           )}
           <DialogFooter className="gap-2">
@@ -480,10 +521,11 @@ export function PosPage() {
             <Button
               type="button"
               onClick={() => {
-                toast.info("Printing is disabled in the preview workspace.");
+                window.print();
               }}
               className="h-9 gap-1.5"
             >
+              <ReceiptText aria-hidden="true" className="size-3.5" />
               Print receipt
             </Button>
           </DialogFooter>

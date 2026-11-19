@@ -2,8 +2,9 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import { ArrowDown, Check, ShieldCheck } from "lucide-react";
 
 import logo from "@/assets/samul-bikers-logo.png";
-import { navigationGroups } from "@/components/layout/nav";
+import { navigationForRole } from "@/components/layout/nav";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/lib/auth/auth-context";
 
 function isActivePath(pathname: string, to: string) {
   if (to === "/") return pathname === "/";
@@ -18,6 +19,8 @@ export function SidebarContents({
   onNavigate?: () => void;
 }) {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const { user } = useAuth();
+  const groups = navigationForRole(user?.role);
 
   return (
     <>
@@ -41,7 +44,7 @@ export function SidebarContents({
       </Link>
 
       <nav aria-label="Main navigation" className="min-h-0 flex-1 overflow-y-auto px-3 pb-4 pt-5">
-        {navigationGroups.map((group) => (
+        {groups.map((group) => (
           <section key={group.label} className="mb-5">
             {!collapsed && (
               <h2 className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-wide text-sidebar-muted">

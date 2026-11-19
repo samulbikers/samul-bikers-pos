@@ -1,5 +1,6 @@
 import { Activity, Bell, Boxes, ChevronDown, LogOut, Menu, Moon, Sun, UserRound } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 
 import { GlobalSearch } from "@/components/layout/global-search";
 import { SidebarContents } from "@/components/layout/app-sidebar";
@@ -21,12 +22,21 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useTheme } from "@/hooks/use-theme";
-import { formatNairobiDate } from "@/lib/format";
+import { useAuth } from "@/lib/auth/auth-context";
+import { canUseGlobalSearch, roleLabels } from "@/lib/auth/roles";
+import { formatNairobiDate, initialsOf } from "@/lib/format";
 
 export function AppTopbar({ title, description }: { title: string; description: string }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [date, setDate] = useState("");
   const { theme, toggleTheme } = useTheme();
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  const handleSignOut = () => {
+    signOut();
+    void navigate({ to: "/login", replace: true });
+  };
 
   useEffect(() => {
     const update = () => setDate(formatNairobiDate(new Date()));
@@ -77,7 +87,7 @@ export function AppTopbar({ title, description }: { title: string; description: 
       </div>
 
       <div className="flex shrink-0 items-center gap-1 sm:gap-2">
-        <GlobalSearch />
+        {user && canUseGlobalSearch(user.role) && <GlobalSearch />}
 
         <span className="hidden h-9 items-center gap-1.5 rounded-md px-2 text-[10px] text-muted-foreground xl:inline-flex">
           <Activity aria-hidden="true" className="size-3.5 text-emerald" />
@@ -153,17 +163,27 @@ export function AppTopbar({ title, description }: { title: string; description: 
               aria-label="Account menu"
             >
               <span className="flex size-8 shrink-0 items-center justify-center rounded-full border border-border bg-card text-[10px] font-semibold text-primary">
-                SM
+                {user ? initialsOf(user.name) : "—"}
               </span>
               <span className="hidden leading-tight sm:block">
-                <span className="block text-[11px] font-medium text-foreground">Store manager</span>
-                <span className="mt-0.5 block text-[9px] text-muted-foreground">Preview workspace</span>
+                <span className="block text-[11px] font-medium text-foreground">
+                  {user?.name ?? "Signed out"}
+                </span>
+                <span className="mt-0.5 block text-[9px] text-muted-foreground">
+                  {user ? roleLabels[user.role] : "Preview workspace"}
+                </span>
               </span>
               <ChevronDown aria-hidden="true" className="hidden size-3 text-muted-foreground sm:block" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel>Store manager</DropdownMenuLabel>
+            <DropdownMenuLabel>
+              <span className="block">{user?.name ?? "Signed out"}</span>
+              <span className="mt-0.5 block text-[10px] font-normal text-muted-foreground">
+                {user ? roleLabels[user.role] : ""}
+                {user ? ` · ${user.email}` : ""}
+              </span>
+            </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem>
               <UserRound aria-hidden="true" className="mr-2 size-4" />
@@ -175,7 +195,7 @@ export function AppTopbar({ title, description }: { title: string; description: 
               {theme === "dark" ? "Light theme" : "Dark theme"}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem disabled>
+            <DropdownMenuItem onSelect={handleSignOut}>
               <LogOut aria-hidden="true" className="mr-2 size-4" />
               Sign out
             </DropdownMenuItem>

@@ -4,24 +4,30 @@ import { ShieldCheck } from "lucide-react";
 
 import { SidebarCollapseButton, SidebarContents } from "@/components/layout/app-sidebar";
 import { AppTopbar } from "@/components/layout/app-topbar";
-import { flatNavItems } from "@/components/layout/nav";
+import { navigationForRole } from "@/components/layout/nav";
+import { useAuth } from "@/lib/auth/auth-context";
+import type { AppRole } from "@/lib/auth/roles";
 
 const SIDEBAR_KEY = "samul-sidebar-collapsed";
 
-function useActiveNavItem() {
+function useActiveNavItem(role: AppRole | undefined) {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
-  const sorted = [...flatNavItems].sort((a, b) => b.to.length - a.to.length);
+  const items = navigationForRole(role).flatMap((group) => group.items);
+  const sorted = [...items].sort((a, b) => b.to.length - a.to.length);
 
   return (
     sorted.find((item) =>
       item.to === "/" ? pathname === "/" : pathname === item.to || pathname.startsWith(`${item.to}/`),
-    ) ?? flatNavItems[0]!
+    ) ?? items[0]!
   );
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
-  const active = useActiveNavItem();
+  const { user } = useAuth();
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const active = useActiveNavItem(user?.role);
+  const isCashierDashboard = user?.role === "cashier" && pathname === "/";
 
   useEffect(() => {
     setCollapsed(window.localStorage.getItem(SIDEBAR_KEY) === "true");
@@ -47,7 +53,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <AppTopbar title={active.label} description={active.description} />
+        <AppTopbar
+          title={isCashierDashboard ? "My shift" : active.label}
+          description={
+            isCashierDashboard
+              ? "Your sales today and a shortcut to the till"
+              : active.description
+          }
+        />
 
         <main className="dashboard-main mx-auto flex w-full max-w-[1600px] flex-1 flex-col gap-5 px-4 pb-8 pt-5 sm:gap-[22px] sm:px-6 sm:pb-10 sm:pt-6 lg:px-8 lg:pt-7">
           {children}
