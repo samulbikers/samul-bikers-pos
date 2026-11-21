@@ -1,11 +1,18 @@
 export function printDocument(title: string, bodyHtml: string) {
-  const win = window.open("", "_blank", "width=420,height=760");
-  if (!win) {
-    window.print();
+  const frame = document.createElement("iframe");
+  frame.title = title;
+  frame.style.cssText =
+    "position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none;";
+  document.body.appendChild(frame);
+
+  const doc = frame.contentWindow?.document;
+  if (!doc) {
+    frame.remove();
     return;
   }
 
-  win.document.write(`<!doctype html>
+  doc.open();
+  doc.write(`<!doctype html>
 <html>
 <head>
 <meta charset="utf-8" />
@@ -32,7 +39,14 @@ export function printDocument(title: string, bodyHtml: string) {
 </head>
 <body><div class="sheet">${bodyHtml}</div></body>
 </html>`);
-  win.document.close();
-  win.focus();
-  window.setTimeout(() => win.print(), 300);
+  doc.close();
+
+  window.setTimeout(() => {
+    try {
+      frame.contentWindow?.focus();
+      frame.contentWindow?.print();
+    } finally {
+      window.setTimeout(() => frame.remove(), 1500);
+    }
+  }, 350);
 }

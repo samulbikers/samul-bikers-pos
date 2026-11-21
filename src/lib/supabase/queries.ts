@@ -155,7 +155,7 @@ export function useSales(limit = 200) {
     queryFn: async () => {
       const { data, error } = await requireSupabase()
         .from("pos_sales")
-        .select("id,receipt,customer_id,customer_name,cashier,branch,payment_method,subtotal,discount,vat,total,status,created_at,pos_sale_items(id,product_id,product_title,quantity,unit_price,line_total)")
+        .select("id,receipt,customer_id,customer_name,cashier,branch,payment_method,subtotal,discount,vat,total,status,payment_reference,created_at,pos_sale_items(id,product_id,product_title,quantity,unit_price,line_total)")
         .order("created_at", { ascending: false })
         .limit(limit);
 

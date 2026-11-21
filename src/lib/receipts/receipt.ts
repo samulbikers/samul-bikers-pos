@@ -81,6 +81,7 @@ export function buildReceipt(input: {
   vat: number;
   total: number;
   paymentMethod: string;
+  paymentReference?: string | undefined;
   status?: string;
   settings: DbSiteSettings | null | undefined;
   branch: string;
@@ -99,7 +100,9 @@ export function buildReceipt(input: {
     vat: input.vat,
     total: input.total,
     paymentMethod: input.paymentMethod,
-    paymentReference: `${input.paymentMethod.toUpperCase().replace(/[^A-Z]/g, "-")}-${input.receipt}`,
+    paymentReference:
+      input.paymentReference?.trim() ||
+      `${input.paymentMethod.toUpperCase().replace(/[^A-Z]/g, "-")}-${input.receipt}`,
     status: input.status ?? "Paid",
   };
 }
@@ -125,6 +128,7 @@ export function receiptFromSale(
     vat: Number(sale.vat),
     total: Number(sale.total),
     paymentMethod: sale.payment_method,
+    paymentReference: sale.payment_reference ?? undefined,
     status: sale.status,
     settings,
     branch: sale.branch || branch,

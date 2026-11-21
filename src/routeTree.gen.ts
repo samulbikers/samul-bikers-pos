@@ -26,6 +26,8 @@ import { Route as AppSettingsRouteImport } from './routes/_app.settings'
 import { Route as AppStaffRouteImport } from './routes/_app.staff'
 import { Route as AppSuppliersRouteImport } from './routes/_app.suppliers'
 import { Route as AppZReportRouteImport } from './routes/_app.z-report'
+import { Route as CheckoutFailedRouteImport } from './routes/checkout.failed'
+import { Route as CheckoutSuccessRouteImport } from './routes/checkout.success'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -111,6 +113,16 @@ const AppZReportRoute = AppZReportRouteImport.update({
   path: '/z-report',
   getParentRoute: () => AppRoute,
 } as any)
+const CheckoutFailedRoute = CheckoutFailedRouteImport.update({
+  id: '/checkout/failed',
+  path: '/checkout/failed',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CheckoutSuccessRoute = CheckoutSuccessRouteImport.update({
+  id: '/checkout/success',
+  path: '/checkout/success',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
@@ -129,6 +141,8 @@ export interface FileRoutesByFullPath {
   '/staff': typeof AppStaffRoute
   '/suppliers': typeof AppSuppliersRoute
   '/z-report': typeof AppZReportRoute
+  '/checkout/failed': typeof CheckoutFailedRoute
+  '/checkout/success': typeof CheckoutSuccessRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
@@ -146,6 +160,8 @@ export interface FileRoutesByTo {
   '/staff': typeof AppStaffRoute
   '/suppliers': typeof AppSuppliersRoute
   '/z-report': typeof AppZReportRoute
+  '/checkout/failed': typeof CheckoutFailedRoute
+  '/checkout/success': typeof CheckoutSuccessRoute
   '/': typeof AppIndexRoute
 }
 export interface FileRoutesById {
@@ -166,6 +182,8 @@ export interface FileRoutesById {
   '/_app/staff': typeof AppStaffRoute
   '/_app/suppliers': typeof AppSuppliersRoute
   '/_app/z-report': typeof AppZReportRoute
+  '/checkout/failed': typeof CheckoutFailedRoute
+  '/checkout/success': typeof CheckoutSuccessRoute
   '/_app/': typeof AppIndexRoute
 }
 export interface FileRouteTypes {
@@ -187,6 +205,8 @@ export interface FileRouteTypes {
     | '/staff'
     | '/suppliers'
     | '/z-report'
+    | '/checkout/failed'
+    | '/checkout/success'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
@@ -204,6 +224,8 @@ export interface FileRouteTypes {
     | '/staff'
     | '/suppliers'
     | '/z-report'
+    | '/checkout/failed'
+    | '/checkout/success'
     | '/'
   id:
     | '__root__'
@@ -223,12 +245,16 @@ export interface FileRouteTypes {
     | '/_app/staff'
     | '/_app/suppliers'
     | '/_app/z-report'
+    | '/checkout/failed'
+    | '/checkout/success'
     | '/_app/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   LoginRoute: typeof LoginRoute
+  CheckoutFailedRoute: typeof CheckoutFailedRoute
+  CheckoutSuccessRoute: typeof CheckoutSuccessRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -352,6 +378,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppZReportRouteImport
       parentRoute: typeof AppRoute
     }
+    '/checkout/failed': {
+      id: '/checkout/failed'
+      path: '/checkout/failed'
+      fullPath: '/checkout/failed'
+      preLoaderRoute: typeof CheckoutFailedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/checkout/success': {
+      id: '/checkout/success'
+      path: '/checkout/success'
+      fullPath: '/checkout/success'
+      preLoaderRoute: typeof CheckoutSuccessRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -396,6 +436,8 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   LoginRoute: LoginRoute,
+  CheckoutFailedRoute: CheckoutFailedRoute,
+  CheckoutSuccessRoute: CheckoutSuccessRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

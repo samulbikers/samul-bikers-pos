@@ -90,6 +90,7 @@ export type DbSale = {
   vat: number;
   total: number;
   status: "Paid" | "Part paid" | "Refunded";
+  payment_reference?: string | null;
   created_at: string;
   pos_sale_items?: DbSaleItem[];
 };

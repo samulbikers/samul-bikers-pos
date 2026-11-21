@@ -36,7 +36,8 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { useCustomers, useProducts, useSiteSettings, type CatalogProduct } from "@/lib/supabase/queries";
-import { useCompleteSale } from "@/lib/supabase/mutations";
+import { useCompleteSale, useSetSalePaymentReference } from "@/lib/supabase/mutations";
+import { MpesaPaymentDialog, type PaidPayment } from "@/features/pos/mpesa-payment-dialog";
 import { useAuth } from "@/lib/auth/auth-context";
 import { useBranches } from "@/lib/branches/branch-store";
 import { playScanBeep } from "@/lib/pos/beep";
@@ -79,6 +80,7 @@ export function PosPage() {
   const customersQuery = useCustomers();
   const settingsQuery = useSiteSettings();
   const completeSale = useCompleteSale();
+  const setSalePaymentReference = useSetSalePaymentReference();
 
   const [category, setCategory] = useState("All");
   const [query, setQuery] = useState("");
@@ -87,7 +89,11 @@ export function PosPage() {
   const [method, setMethod] = useState<PaymentMethod>("M-Pesa");
   const [discount, setDiscount] = useState("0");
   const [scanValue, setScanValue] = useState("");
-  const [completed, setCompleted] = useState<{ receiptData: ReceiptData } | null>(null);
+  const [mpesaOpen, setMpesaOpen] = useState(false);
+  const [mpesaAmount, setMpesaAmount] = useState(0);
+  const [completed, setCompleted] = useState<{ receiptData: ReceiptData; paymentSuccess: boolean } | null>(
+    null,
+  );
   const branchName = branches.find((branch) => branch.id === user?.branchId)?.name ?? "Main branch";
 
   const products = productsQuery.data ?? [];
@@ -181,58 +187,104 @@ export function PosPage() {
     );
   };
 
+  const recordSale = async (paymentReference?: string, autoReceipt = false) => {
+    if (!cart.length) {
+      throw new Error("Add a product before completing the sale.");
+    }
+
+    const sale = await completeSale.mutateAsync({
+      customerId: customerId === "walk-in" ? null : customerId,
+      customerName: customerLabel,
+      cashier: user?.name ?? "Store manager",
+      paymentMethod: method,
+      discount: discountValue,
+      lines: cart.map((line) => ({
+        product_id: line.product.id,
+        product_title: line.product.title,
+        quantity: line.quantity,
+        unit_price: line.product.price,
+      })),
+    });
+
+    if (paymentReference && sale.id) {
+      try {
+        await setSalePaymentReference.mutateAsync({
+          saleId: sale.id,
+          reference: paymentReference,
+        });
+      } catch (referenceError) {
+        toast.error("Payment reference could not be saved", {
+          description: referenceError instanceof Error ? referenceError.message : "Unexpected error",
+        });
+      }
+    }
+
+    const receiptData = buildReceipt({
+      receipt: sale.receipt,
+      createdAt: sale.created_at ?? new Date().toISOString(),
+      cashier: user?.name ?? "Store manager",
+      cashierId: user?.username,
+      customer: customerLabel,
+      lines: cart.map((line) => ({
+        title: line.product.title,
+        quantity: line.quantity,
+        unitPrice: line.product.price,
+        lineTotal: line.product.price * line.quantity,
+      })),
+      subtotal: Number(sale.subtotal ?? subtotal),
+      discount: Number(sale.discount ?? discountValue),
+      vat: Number(sale.vat ?? vat),
+      total: Number(sale.total ?? total),
+      paymentMethod: method,
+      paymentReference,
+      status: sale.status,
+      settings: settingsQuery.data,
+      branch: branchName,
+    });
+
+    setCompleted({ receiptData, paymentSuccess: autoReceipt });
+    setCart([]);
+    setDiscount("0");
+    toast.success(`Sale ${sale.receipt} recorded`, {
+      description: `${formatKes(Number(sale.total))} · ${method}`,
+    });
+
+    if (autoReceipt) {
+      toast.success("Payment Success!", { description: "Printing and downloading the receipt..." });
+      window.setTimeout(() => {
+        printReceipt(receiptData);
+        downloadReceiptPdf(receiptData);
+      }, 350);
+    }
+  };
+
   const handleComplete = async () => {
     if (!cart.length) {
       toast.error("Add a product before completing the sale.");
       return;
     }
 
+    if (method === "M-Pesa") {
+      setMpesaAmount(total);
+      setMpesaOpen(true);
+      return;
+    }
+
     try {
-      const sale = await completeSale.mutateAsync({
-        customerId: customerId === "walk-in" ? null : customerId,
-        customerName: customerLabel,
-        cashier: user?.name ?? "Store manager",
-        paymentMethod: method,
-        discount: discountValue,
-        lines: cart.map((line) => ({
-          product_id: line.product.id,
-          product_title: line.product.title,
-          quantity: line.quantity,
-          unit_price: line.product.price,
-        })),
-      });
-
-      const receiptData = buildReceipt({
-        receipt: sale.receipt,
-        createdAt: sale.created_at ?? new Date().toISOString(),
-        cashier: user?.name ?? "Store manager",
-        cashierId: user?.username,
-        customer: customerLabel,
-        lines: cart.map((line) => ({
-          title: line.product.title,
-          quantity: line.quantity,
-          unitPrice: line.product.price,
-          lineTotal: line.product.price * line.quantity,
-        })),
-        subtotal: Number(sale.subtotal ?? subtotal),
-        discount: Number(sale.discount ?? discountValue),
-        vat: Number(sale.vat ?? vat),
-        total: Number(sale.total ?? total),
-        paymentMethod: method,
-        status: sale.status,
-        settings: settingsQuery.data,
-        branch: branchName,
-      });
-
-      setCompleted({ receiptData });
-      setCart([]);
-      setDiscount("0");
-      toast.success(`Sale ${sale.receipt} recorded`, { description: `${formatKes(Number(sale.total))} · ${method}` });
+      await recordSale();
     } catch (error) {
       toast.error("Could not record the sale", {
         description: error instanceof Error ? error.message : "Unexpected error",
       });
     }
+  };
+
+  const handleMpesaPaid = async (payment: PaidPayment) => {
+    const reference =
+      payment.manual || !payment.providerReference
+        ? payment.reference
+        : `${payment.reference} / ${payment.providerReference}`;
+    await recordSale(reference, true);
   };
 
   const cartPanel = (suffix: string) => (
@@ -366,6 +418,11 @@ export function PosPage() {
               );
             })}
           </div>
+          {method === "M-Pesa" ? (
+            <p className="mt-2 text-[9px] leading-relaxed text-muted-foreground">
+              Prompt the customer&apos;s phone, or use a manual M-Pesa reference.
+            </p>
+          ) : null}
         </fieldset>
 
         <Button
@@ -374,8 +431,16 @@ export function PosPage() {
           disabled={!cart.length || completeSale.isPending}
           className="mt-3 h-10 w-full gap-2 text-[12px] font-semibold"
         >
-          <Check aria-hidden="true" className="size-4" />
-          {completeSale.isPending ? "Recording sale..." : `Complete sale · ${formatKes(total)}`}
+          {method === "M-Pesa" ? (
+            <Smartphone aria-hidden="true" className="size-4" />
+          ) : (
+            <Check aria-hidden="true" className="size-4" />
+          )}
+          {method === "M-Pesa"
+            ? `Pay with M-Pesa · ${formatKes(total)}`
+            : completeSale.isPending
+              ? "Recording sale..."
+              : `Complete sale · ${formatKes(total)}`}
         </Button>
         <p className="mt-2 text-center text-[9px] text-muted-foreground">
           Records to Supabase · stock is updated automatically
@@ -504,33 +569,55 @@ export function PosPage() {
                 const low = product.stock <= product.reorderLevel;
 
                 return (
-                  <button
+                  <div
                     key={product.id}
-                    type="button"
-                    onClick={() => addToCart(product)}
-                    aria-label={`Add ${product.title} to cart`}
-                    className="group relative overflow-hidden rounded-lg border border-border bg-background text-left transition-colors hover:border-amber/60 hover:bg-amber/[0.04]"
+                    className={`group relative overflow-hidden rounded-lg border bg-background transition-colors hover:border-amber/60 ${
+                      inCart > 0 ? "border-amber/60 bg-amber/[0.04]" : "border-border"
+                    }`}
                   >
                     <ProductImage product={product} className="h-24 w-full" />
                     {inCart > 0 && (
-                      <span className="absolute right-1.5 top-1.5 flex size-5 items-center justify-center rounded-full bg-amber text-[10px] font-semibold text-background">
+                      <span
+                        aria-label={`${inCart} in cart`}
+                        className="absolute right-1.5 top-1.5 flex size-6 items-center justify-center rounded-full bg-amber text-[11px] font-bold text-background shadow-[0_2px_6px_rgba(0,0,0,0.25)]"
+                      >
                         {inCart}
                       </span>
                     )}
-                    <span className="block p-2.5">
-                      <span className="line-clamp-2 block min-h-[26px] text-[11px] font-medium leading-[1.3] text-card-foreground">
+                    <div className="block p-2.5">
+                      <p className="line-clamp-2 min-h-[26px] text-[11px] font-medium leading-[1.3] text-card-foreground">
                         {product.title}
-                      </span>
-                      <span className="mt-1.5 flex items-center justify-between gap-1">
-                        <span className="text-[11px] font-semibold text-card-foreground">
-                          {formatKes(product.price)}
+                      </p>
+                      <div className="mt-1.5 flex items-end justify-between gap-1.5">
+                        <span className="min-w-0">
+                          <span className="block text-[11px] font-semibold text-card-foreground">
+                            {formatKes(product.price)}
+                          </span>
+                          <span
+                            className={`block text-[9px] font-medium ${
+                              product.stock === 0
+                                ? "text-destructive"
+                                : low
+                                  ? "text-amber"
+                                  : "text-muted-foreground"
+                            }`}
+                          >
+                            {product.stock === 0 ? "Out of stock" : `${product.stock} left`}
+                          </span>
                         </span>
-                        <span className={`text-[9px] font-medium ${product.stock === 0 ? "text-destructive" : low ? "text-amber" : "text-muted-foreground"}`}>
-                          {product.stock} left
-                        </span>
-                      </span>
-                    </span>
-                  </button>
+                        <button
+                          type="button"
+                          onClick={() => addToCart(product)}
+                          disabled={product.stock <= 0}
+                          aria-label={`Add ${product.title} to cart`}
+                          title={`Add ${product.title}`}
+                          className="flex size-9 shrink-0 items-center justify-center rounded-full bg-amber text-background shadow-sm transition-transform hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:hover:scale-100"
+                        >
+                          <Plus aria-hidden="true" className="size-4" strokeWidth={3} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 );
               })}
               {!visibleProducts.length && (
@@ -568,40 +655,53 @@ export function PosPage() {
         </Sheet>
       </div>
 
+      <MpesaPaymentDialog
+        open={mpesaOpen}
+        onOpenChange={setMpesaOpen}
+        amount={mpesaAmount}
+        customerName={customerLabel}
+        onPaid={handleMpesaPaid}
+        recording={completeSale.isPending || setSalePaymentReference.isPending}
+      />
+
       <Dialog open={Boolean(completed)} onOpenChange={(open) => !open && setCompleted(null)}>
         <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-[420px] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-[15px]">Official receipt</DialogTitle>
+            <DialogTitle className="text-[15px]">
+              {completed?.paymentSuccess ? "Payment Success!" : "Official receipt"}
+            </DialogTitle>
             <DialogDescription className="text-[11px]">
-              Saved to Supabase · print or download as PDF.
+              {completed?.paymentSuccess
+                ? "Payment received. The receipt has been printed and downloaded automatically."
+                : "Saved to Supabase · print or download as PDF."}
             </DialogDescription>
           </DialogHeader>
+          {completed && (
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => printReceipt(completed.receiptData)}
+                className="h-9 gap-1.5"
+              >
+                <Printer aria-hidden="true" className="size-3.5" />
+                Print
+              </Button>
+              <Button
+                type="button"
+                onClick={() => downloadReceiptPdf(completed.receiptData)}
+                className="h-9 gap-1.5"
+              >
+                <Download aria-hidden="true" className="size-3.5" />
+                Download PDF
+              </Button>
+            </div>
+          )}
           {completed && <ReceiptDocument data={completed.receiptData} />}
-          <DialogFooter className="gap-2">
+          <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setCompleted(null)} className="h-9">
               Close
             </Button>
-            {completed && (
-              <>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => printReceipt(completed.receiptData)}
-                  className="h-9 gap-1.5"
-                >
-                  <Printer aria-hidden="true" className="size-3.5" />
-                  Print
-                </Button>
-                <Button
-                  type="button"
-                  onClick={() => downloadReceiptPdf(completed.receiptData)}
-                  className="h-9 gap-1.5"
-                >
-                  <Download aria-hidden="true" className="size-3.5" />
-                  PDF
-                </Button>
-              </>
-            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

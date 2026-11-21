@@ -55,6 +55,17 @@ export function useCompleteSale() {
   });
 }
 
+export function useSetSalePaymentReference() {
+  return useEntityMutation(async (input: { saleId: string; reference: string }) => {
+    const { error } = await requireSupabase().rpc("pos_set_sale_payment_reference", {
+      p_sale_id: input.saleId,
+      p_reference: input.reference,
+    });
+    if (error) throw error;
+    return input.saleId;
+  }, [queryKeys.sales]);
+}
+
 export function useRefundSale() {
   const queryClient = useQueryClient();
 

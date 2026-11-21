@@ -43,6 +43,8 @@ export function SalesPage() {
   const [status, setStatus] = useState<string>(statusOptions[0]);
   const [selected, setSelected] = useState<DbSale | null>(null);
 
+  const selectedReceipt = selected ? receiptFromSale(selected, settingsQuery.data, branchName) : null;
+
   const sales = salesQuery.data ?? [];
 
   const rows = useMemo(() => {
@@ -229,35 +231,32 @@ export function SalesPage() {
               {selected && formatDate(selected.created_at)} · {selected?.cashier} · {selected?.payment_method}
             </DialogDescription>
           </DialogHeader>
-          {selected && (
-            <ReceiptDocument data={receiptFromSale(selected, settingsQuery.data, branchName)} />
+          {selectedReceipt && (
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-9 gap-1.5"
+                onClick={() => printReceipt(selectedReceipt)}
+              >
+                <Printer aria-hidden="true" className="size-3.5" />
+                Print
+              </Button>
+              <Button
+                type="button"
+                className="h-9 gap-1.5"
+                onClick={() => downloadReceiptPdf(selectedReceipt)}
+              >
+                <Download aria-hidden="true" className="size-3.5" />
+                Download PDF
+              </Button>
+            </div>
           )}
+          {selectedReceipt && <ReceiptDocument data={selectedReceipt} />}
           <DialogFooter className="gap-2">
             <Button type="button" variant="outline" onClick={() => setSelected(null)} className="h-9">
               Close
             </Button>
-            {selected && (
-              <>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-9 gap-1.5"
-                  onClick={() => printReceipt(receiptFromSale(selected, settingsQuery.data, branchName))}
-                >
-                  <Printer aria-hidden="true" className="size-3.5" />
-                  Print
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-9 gap-1.5"
-                  onClick={() => downloadReceiptPdf(receiptFromSale(selected, settingsQuery.data, branchName))}
-                >
-                  <Download aria-hidden="true" className="size-3.5" />
-                  PDF
-                </Button>
-              </>
-            )}
             <Button
               type="button"
               variant="destructive"

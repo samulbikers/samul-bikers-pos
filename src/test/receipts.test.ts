@@ -63,4 +63,24 @@ describe("Official receipt", () => {
   it("shows the attendant's first name with their staff username", () => {
     expect(servedBy(receipt)).toBe("Mary (@mary)");
   });
+
+  it("uses the saved M-Pesa reference on the receipt", () => {
+    const paid = buildReceipt({
+      receipt: "SBH-00046",
+      createdAt: "2026-11-22T00:40:00+03:00",
+      cashier: "Miriam Wambui",
+      customer: "Walk-in customer",
+      lines: [{ title: "45L Aluminium top box", quantity: 1, unitPrice: 17400, lineTotal: 17400 }],
+      subtotal: 17400,
+      discount: 0,
+      vat: 2784,
+      total: 20184,
+      paymentMethod: "M-Pesa",
+      paymentReference: "TCT3K99UFZ",
+      settings,
+      branch: "Main branch",
+    });
+
+    expect(receiptToHtml(paid)).toContain("TCT3K99UFZ");
+  });
 });

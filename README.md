@@ -47,6 +47,15 @@ Samul Bikers ships as an installable PWA. The **Install** control appears on the
 
 The manifest is at `public/manifest.webmanifest`; the service worker is `public/sw.js` and is registered only in production builds. Icons, `favicon.ico`, `favicon.png` and `apple-touch-icon.png` are generated from `src/assets/samul-bikers-logo.png`.
 
+## M-Pesa payments (PayHero)
+
+M-Pesa sales open a payment dialog with two options:
+
+- **Prompt customer** — enter the customer’s M-Pesa number and PayHero opens the Lipwa checkout in a popup. On success the sale is recorded, a payment reference is stored, and the receipt prints and downloads automatically. On failure the dialog shows “Payment Failed! Please Try Again.” and the POS invoice stays unpaid.
+- **Manual pay** — enter the customer’s M-Pesa reference code and issue the receipt manually.
+
+PayHero settings default to the shop’s Lipwa link and channel ID and can be overridden with `VITE_PAYHERO_PAYMENT_URL` and `VITE_PAYHERO_CHANNEL_ID` in `.env.local`.
+
 ## Sign-in
 
 Staff sign in with a username and 4-digit PIN. Demo accounts:
