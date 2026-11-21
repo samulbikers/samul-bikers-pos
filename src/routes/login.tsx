@@ -3,6 +3,7 @@ import { ArrowRight, KeyRound, ShieldCheck, ShoppingCart, UserRound } from "luci
 import { useState } from "react";
 
 import logo from "@/assets/samul-bikers-logo.png";
+import { InstallAppButton } from "@/components/pwa/install-app-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -158,6 +159,13 @@ function LoginPage() {
               <ArrowRight aria-hidden="true" className="size-4" />
             </Button>
           </form>
+
+          <InstallAppButton
+            variant="outline"
+            size="lg"
+            className="mt-4 h-10 w-full gap-2 text-[12px]"
+            label="Install Samul Bikers on this device"
+          />
 
           <div className="mt-7 rounded-lg border border-border bg-card p-4">
             <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">

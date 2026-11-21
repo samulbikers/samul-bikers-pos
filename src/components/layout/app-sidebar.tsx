@@ -3,6 +3,7 @@ import { ArrowDown, Check, ShieldCheck } from "lucide-react";
 
 import logo from "@/assets/samul-bikers-logo.png";
 import { navigationForRole } from "@/components/layout/nav";
+import { InstallAppButton } from "@/components/pwa/install-app-button";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth/auth-context";
 
@@ -97,6 +98,11 @@ export function SidebarContents({
 
       {!collapsed && (
         <div className="border-t border-sidebar-border p-4">
+          <InstallAppButton
+            variant="outline"
+            className="mb-3 h-8 w-full gap-1.5 text-[10px]"
+            label="Install desktop app"
+          />
           <div className="flex items-center gap-2.5">
             <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-sidebar-accent text-sidebar-primary">
               <ShieldCheck aria-hidden="true" className="size-4" />

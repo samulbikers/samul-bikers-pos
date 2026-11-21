@@ -4,6 +4,7 @@ import { useNavigate } from "@tanstack/react-router";
 
 import { GlobalSearch } from "@/components/layout/global-search";
 import { SidebarContents } from "@/components/layout/app-sidebar";
+import { InstallAppButton } from "@/components/pwa/install-app-button";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -93,6 +94,12 @@ export function AppTopbar({ title, description }: { title: string; description: 
           <Activity aria-hidden="true" className="size-3.5 text-emerald" />
           Nairobi{date && ` · ${date}`}
         </span>
+
+        <InstallAppButton
+          variant="ghost"
+          className="hidden h-9 gap-1.5 px-2 text-[11px] font-medium sm:inline-flex"
+          label="Install"
+        />
 
         <Button
           type="button"

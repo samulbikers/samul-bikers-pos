@@ -41,6 +41,12 @@ The app uses:
 - `pos_inventory_movements` for stock audit history.
 - `pos_branches` and `pos_staff_accounts` for branch logins. Staff PINs are hashed and only exposed through the `pos_staff_*` RPCs.
 
+## Install as an app (PWA)
+
+Samul Bikers ships as an installable PWA. The **Install** control appears on the login screen, in the top bar and in the sidebar. Installing adds the POS to the home screen, app list or desktop and opens it in a standalone window.
+
+The manifest is at `public/manifest.webmanifest`; the service worker is `public/sw.js` and is registered only in production builds. Icons, `favicon.ico`, `favicon.png` and `apple-touch-icon.png` are generated from `src/assets/samul-bikers-logo.png`.
+
 ## Sign-in
 
 Staff sign in with a username and 4-digit PIN. Demo accounts:

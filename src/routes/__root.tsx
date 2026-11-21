@@ -80,10 +80,15 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   head: () => ({
     meta: [
       { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
+      { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
       { title: "Samul Bikers POS" },
       { name: "description", content: "Point of sale and business management for Samul Bikers Haven, Nairobi." },
       { name: "author", content: "Samul Bikers" },
+      { name: "application-name", content: "Samul Bikers" },
+      { name: "theme-color", content: "#0b1220" },
+      { name: "apple-mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
+      { name: "apple-mobile-web-app-title", content: "Samul Bikers" },
       { property: "og:title", content: "Samul Bikers POS" },
       { property: "og:description", content: "Point of sale and business management for Samul Bikers Haven, Nairobi." },
       { property: "og:type", content: "website" },
@@ -101,7 +106,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         rel: "stylesheet",
         href: "https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600&display=swap",
       },
-      { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
+      { rel: "icon", href: "/favicon.ico", sizes: "16x16 32x32", type: "image/x-icon" },
+      { rel: "icon", href: "/favicon.png", sizes: "32x32", type: "image/png" },
+      { rel: "apple-touch-icon", href: "/apple-touch-icon.png", sizes: "180x180" },
+      { rel: "manifest", href: "/manifest.webmanifest" },
     ],
   }),
   shellComponent: RootShell,
@@ -125,12 +133,32 @@ function RootShell({ children }: { children: ReactNode }) {
   );
 }
 
+function PwaRegistration() {
+  useEffect(() => {
+    if (!("serviceWorker" in navigator) || !import.meta.env.PROD) return;
+
+    const register = () => {
+      void navigator.serviceWorker.register("/sw.js").catch(() => {
+        // Installation is optional; never block the POS on a service-worker failure.
+      });
+    };
+
+    if (document.readyState === "complete") register();
+    else window.addEventListener("load", register, { once: true });
+
+    return () => window.removeEventListener("load", register);
+  }, []);
+
+  return null;
+}
+
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
 
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
+        <PwaRegistration />
         {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
         <Outlet />
         <Toaster position="bottom-right" closeButton />
