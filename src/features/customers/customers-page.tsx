@@ -1,7 +1,8 @@
-import { ContactRound, Plus, Repeat, Users, Wallet } from "lucide-react";
+import { ContactRound, Pencil, Plus, Repeat, Trash2, Users, Wallet } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
+import { ConfirmDialog, FormDialog, type FormField, type FormValues } from "@/components/data/form-dialog";
 import { DataTable } from "@/components/data/data-table";
 import { EmptyState, QueryError, QueryLoading, SupabaseNotice } from "@/components/data/query-state";
 import { StatCard } from "@/components/data/stat-card";
@@ -9,31 +10,44 @@ import { StatusBadge } from "@/components/data/status-badge";
 import { FilterSelect, SearchField, Toolbar } from "@/components/data/toolbar";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { useCustomers, useSales } from "@/lib/supabase/queries";
-import { useCreateCustomer } from "@/lib/supabase/mutations";
+import {
+  useCreateCustomer,
+  useDeleteCustomer,
+  useUpdateCustomer,
+} from "@/lib/supabase/mutations";
+import type { DbCustomer } from "@/lib/supabase/types";
 import { formatDate, formatKes, initialsOf } from "@/lib/format";
 
 const tierOptions = ["All customers", "New", "Regular", "Loyal", "Trade"] as const;
+const tierFields: readonly FormField[] = [
+  { key: "name", label: "Full name", full: true, placeholder: "e.g. Kevin Mutua" },
+  { key: "phone", label: "Phone", placeholder: "+254 7xx xxx xxx" },
+  { key: "email", label: "Email", type: "email", placeholder: "customer@example.co.ke" },
+  { key: "location", label: "Location", placeholder: "Westlands" },
+  {
+    key: "tier",
+    label: "Tier",
+    type: "select",
+    options: tierOptions.slice(1).map((tier) => ({ value: tier, label: tier })),
+  },
+];
+
+const emptyValues: FormValues = { name: "", phone: "", email: "", location: "", tier: "New" };
 
 export function CustomersPage() {
   const customersQuery = useCustomers();
   const salesQuery = useSales(500);
   const createCustomer = useCreateCustomer();
+  const updateCustomer = useUpdateCustomer();
+  const deleteCustomer = useDeleteCustomer();
 
   const [query, setQuery] = useState("");
   const [tier, setTier] = useState<string>(tierOptions[0]);
-  const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ name: "", phone: "", email: "", location: "" });
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editing, setEditing] = useState<DbCustomer | null>(null);
+  const [values, setValues] = useState<FormValues>(emptyValues);
+  const [deleting, setDeleting] = useState<DbCustomer | null>(null);
 
   const customers = customersQuery.data ?? [];
 
@@ -72,24 +86,66 @@ export function CustomersPage() {
       )
     : 0;
 
+  const change = (key: string, value: string) => setValues((current) => ({ ...current, [key]: value }));
+
+  const openCreate = () => {
+    setEditing(null);
+    setValues(emptyValues);
+    setDialogOpen(true);
+  };
+
+  const openEdit = (customer: DbCustomer) => {
+    setEditing(customer);
+    setValues({
+      name: customer.name,
+      phone: customer.phone ?? "",
+      email: customer.email ?? "",
+      location: customer.location ?? "",
+      tier: customer.tier,
+    });
+    setDialogOpen(true);
+  };
+
   const submit = async () => {
-    if (!form.name.trim()) {
+    if (!values["name"]?.trim()) {
       toast.error("A customer name is required");
       return;
     }
 
+    const payload = {
+      name: values["name"].trim(),
+      phone: values["phone"]?.trim() || null,
+      email: values["email"]?.trim() || null,
+      location: values["location"]?.trim() || null,
+      tier: (values["tier"] || "New") as DbCustomer["tier"],
+    };
+
     try {
-      await createCustomer.mutateAsync({
-        name: form.name.trim(),
-        phone: form.phone.trim() || undefined,
-        email: form.email.trim() || undefined,
-        location: form.location.trim() || undefined,
-      });
-      toast.success("Customer added", { description: `${form.name.trim()} saved to Supabase.` });
-      setForm({ name: "", phone: "", email: "", location: "" });
-      setOpen(false);
+      if (editing) {
+        await updateCustomer.mutateAsync({ id: editing.id, ...payload });
+        toast.success("Customer updated", { description: `${payload.name} saved to Supabase.` });
+      } else {
+        await createCustomer.mutateAsync(payload);
+        toast.success("Customer added", { description: `${payload.name} saved to Supabase.` });
+      }
+      setDialogOpen(false);
+      setEditing(null);
+      setValues(emptyValues);
     } catch (error) {
-      toast.error("Could not add the customer", {
+      toast.error(editing ? "Could not update the customer" : "Could not add the customer", {
+        description: error instanceof Error ? error.message : "Unexpected error",
+      });
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deleting) return;
+    try {
+      await deleteCustomer.mutateAsync(deleting.id);
+      toast.success("Customer deleted", { description: `${deleting.name} removed from Supabase.` });
+      setDeleting(null);
+    } catch (error) {
+      toast.error("Could not delete the customer", {
         description: error instanceof Error ? error.message : "Unexpected error",
       });
     }
@@ -109,7 +165,7 @@ export function CustomersPage() {
           ) : null
         }
         actions={
-          <Button type="button" size="sm" className="h-9 gap-1.5" onClick={() => setOpen(true)}>
+          <Button type="button" size="sm" className="h-9 gap-1.5" onClick={openCreate}>
             <Plus aria-hidden="true" className="size-3.5" />
             Add customer
           </Button>
@@ -147,7 +203,7 @@ export function CustomersPage() {
               title="No customers yet"
               description="Add your first customer to start linking receipts to people."
               action={
-                <Button type="button" size="sm" className="mt-2 h-8" onClick={() => setOpen(true)}>
+                <Button type="button" size="sm" className="mt-2 h-8" onClick={openCreate}>
                   Add customer
                 </Button>
               }
@@ -159,7 +215,7 @@ export function CustomersPage() {
             getRowId={(customer) => customer.id}
             emptyMessage="No customers match these filters."
             caption="Customer book"
-            minWidth="760px"
+            minWidth="880px"
             columns={[
               {
                 key: "name",
@@ -213,74 +269,55 @@ export function CustomersPage() {
                   );
                 },
               },
+              {
+                key: "actions",
+                header: "ACTIONS",
+                align: "right",
+                render: (customer) => (
+                  <span className="flex items-center justify-end gap-1">
+                    <Button type="button" variant="outline" size="sm" className="h-7 gap-1 px-2 text-[10px]" onClick={() => openEdit(customer)}>
+                      <Pencil aria-hidden="true" className="size-3" />
+                      Edit
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 gap-1 px-2 text-[10px] text-destructive"
+                      onClick={() => setDeleting(customer)}
+                    >
+                      <Trash2 aria-hidden="true" className="size-3" />
+                      Delete
+                    </Button>
+                  </span>
+                ),
+              },
             ]}
           />
         )}
       </section>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-[420px]">
-          <DialogHeader>
-            <DialogTitle className="text-[15px]">Add customer</DialogTitle>
-            <DialogDescription className="text-[11px]">Saved to the pos_customers table.</DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5 sm:col-span-2">
-              <Label htmlFor="customer-name" className="text-[11px]">
-                Full name
-              </Label>
-              <Input
-                id="customer-name"
-                value={form.name}
-                onChange={(event) => setForm({ ...form, name: event.target.value })}
-                className="h-9 text-[11px]"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="customer-phone" className="text-[11px]">
-                Phone
-              </Label>
-              <Input
-                id="customer-phone"
-                value={form.phone}
-                onChange={(event) => setForm({ ...form, phone: event.target.value })}
-                className="h-9 text-[11px]"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="customer-location" className="text-[11px]">
-                Location
-              </Label>
-              <Input
-                id="customer-location"
-                value={form.location}
-                onChange={(event) => setForm({ ...form, location: event.target.value })}
-                className="h-9 text-[11px]"
-              />
-            </div>
-            <div className="space-y-1.5 sm:col-span-2">
-              <Label htmlFor="customer-email" className="text-[11px]">
-                Email
-              </Label>
-              <Input
-                id="customer-email"
-                type="email"
-                value={form.email}
-                onChange={(event) => setForm({ ...form, email: event.target.value })}
-                className="h-9 text-[11px]"
-              />
-            </div>
-          </div>
-          <DialogFooter className="gap-2">
-            <Button type="button" variant="outline" onClick={() => setOpen(false)} className="h-9">
-              Cancel
-            </Button>
-            <Button type="button" onClick={submit} disabled={createCustomer.isPending} className="h-9">
-              {createCustomer.isPending ? "Saving..." : "Save customer"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <FormDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        title={editing ? "Update customer" : "Add customer"}
+        description="Saved to the pos_customers table in Supabase."
+        fields={tierFields}
+        values={values}
+        onChange={change}
+        onSubmit={submit}
+        pending={createCustomer.isPending || updateCustomer.isPending}
+        submitLabel={editing ? "Save changes" : "Save customer"}
+      />
+
+      <ConfirmDialog
+        open={Boolean(deleting)}
+        onOpenChange={(open) => (open ? null : setDeleting(null))}
+        title="Delete customer?"
+        description={`Remove ${deleting?.name ?? "this customer"} from the customer book? Past receipts stay in place.`}
+        pending={deleteCustomer.isPending}
+        onConfirm={confirmDelete}
+      />
     </>
   );
 }

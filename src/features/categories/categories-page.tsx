@@ -1,19 +1,52 @@
-import { ArrowRight, LayoutGrid, Percent, ShoppingBag, Wallet } from "lucide-react";
-import { useMemo } from "react";
+import { ArrowRight, LayoutGrid, Pencil, Percent, Plus, ShoppingBag, Trash2, Wallet } from "lucide-react";
+import { useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { toast } from "sonner";
 
 import { EmptyState, QueryError, QueryLoading, SupabaseNotice } from "@/components/data/query-state";
+import { ConfirmDialog, FormDialog, type FormField, type FormValues } from "@/components/data/form-dialog";
 import { SectionCard } from "@/components/data/section-card";
 import { StatCard } from "@/components/data/stat-card";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { useCategories, useProducts, useSales } from "@/lib/supabase/queries";
+import {
+  useCreateCategory,
+  useDeleteCategory,
+  useUpdateCategory,
+} from "@/lib/supabase/mutations";
+import type { DbCategory } from "@/lib/supabase/types";
 import { formatKes, formatPercent } from "@/lib/format";
+
+const fields: readonly FormField[] = [
+  { key: "name", label: "Category name", full: true, placeholder: "e.g. Top boxes" },
+  { key: "blurb", label: "Short description", full: true, type: "textarea", placeholder: "Shown on the website" },
+  { key: "image_url", label: "Image URL", type: "url", full: true, placeholder: "https://..." },
+  { key: "sort_order", label: "Sort order", type: "number", hint: "Lower numbers appear first on the website." },
+];
+
+const emptyValues: FormValues = { name: "", blurb: "", image_url: "", sort_order: "0" };
+
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
 
 export function CategoriesPage() {
   const categoriesQuery = useCategories();
   const productsQuery = useProducts();
   const salesQuery = useSales(500);
+  const createCategory = useCreateCategory();
+  const updateCategory = useUpdateCategory();
+  const deleteCategory = useDeleteCategory();
+
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editing, setEditing] = useState<DbCategory | null>(null);
+  const [values, setValues] = useState<FormValues>(emptyValues);
+  const [deleting, setDeleting] = useState<DbCategory | null>(null);
 
   const products = productsQuery.data ?? [];
   const categories = categoriesQuery.data ?? [];
@@ -53,6 +86,73 @@ export function CategoriesPage() {
     null,
   );
 
+  const change = (key: string, value: string) => setValues((current) => ({ ...current, [key]: value }));
+
+  const openCreate = () => {
+    setEditing(null);
+    setValues({ ...emptyValues, sort_order: String(categories.length) });
+    setDialogOpen(true);
+  };
+
+  const openEdit = (category: DbCategory) => {
+    setEditing(category);
+    setValues({
+      name: category.name,
+      blurb: category.blurb,
+      image_url: category.image_url ?? "",
+      sort_order: String(category.sort_order),
+    });
+    setDialogOpen(true);
+  };
+
+  const submit = async () => {
+    if (!values["name"]?.trim()) {
+      toast.error("A category name is required");
+      return;
+    }
+
+    const payload = {
+      name: values["name"].trim(),
+      slug: slugify(values["name"]),
+      blurb: values["blurb"]?.trim() || "",
+      image_url: values["image_url"]?.trim() || null,
+      sort_order: Number(values["sort_order"] || 0),
+    };
+
+    try {
+      if (editing) {
+        await updateCategory.mutateAsync({ id: editing.id, ...payload });
+        toast.success("Category updated", { description: `${payload.name} saved to Supabase.` });
+      } else {
+        await createCategory.mutateAsync(payload);
+        toast.success("Category added", { description: `${payload.name} will appear on the website.` });
+      }
+      setDialogOpen(false);
+      setEditing(null);
+      setValues(emptyValues);
+    } catch (error) {
+      toast.error("Could not save the category", {
+        description: error instanceof Error ? error.message : "Unexpected error",
+      });
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deleting) return;
+    try {
+      await deleteCategory.mutateAsync(deleting.id);
+      toast.success("Category deleted", { description: `${deleting.name} removed from Supabase.` });
+      setDeleting(null);
+    } catch (error) {
+      toast.error("Could not delete the category", {
+        description:
+          error instanceof Error
+            ? `${error.message}. Move its products to another category first.`
+            : "Unexpected error",
+      });
+    }
+  };
+
   return (
     <>
       <PageHeader
@@ -67,12 +167,18 @@ export function CategoriesPage() {
           ) : null
         }
         actions={
-          <Button asChild variant="outline" size="sm" className="h-9 gap-1.5">
-            <Link to="/products">
-              <ShoppingBag aria-hidden="true" className="size-3.5" />
-              Browse products
-            </Link>
-          </Button>
+          <>
+            <Button asChild variant="outline" size="sm" className="h-9 gap-1.5">
+              <Link to="/products">
+                <ShoppingBag aria-hidden="true" className="size-3.5" />
+                Browse products
+              </Link>
+            </Button>
+            <Button type="button" size="sm" className="h-9 gap-1.5" onClick={openCreate}>
+              <Plus aria-hidden="true" className="size-3.5" />
+              Add category
+            </Button>
+          </>
         }
       />
 
@@ -97,7 +203,12 @@ export function CategoriesPage() {
       ) : !rows.length ? (
         <EmptyState
           title="No categories yet"
-          description="Categories created in the shop website admin will appear here automatically."
+          description="Add a category to organise products on the POS and the website."
+          action={
+            <Button type="button" size="sm" className="mt-2 h-8" onClick={openCreate}>
+              Add category
+            </Button>
+          }
         />
       ) : (
         <section aria-label="Category cards" className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -152,12 +263,29 @@ export function CategoriesPage() {
                     </div>
                     <p className="mt-1.5 text-[10px] text-muted-foreground">{share}% of recorded revenue</p>
                   </div>
-                  <Button asChild variant="ghost" size="sm" className="mt-3 h-8 justify-start gap-1 px-0 text-[11px] text-primary hover:bg-transparent">
-                    <Link to="/products">
-                      View products
-                      <ArrowRight aria-hidden="true" className="size-3" />
-                    </Link>
-                  </Button>
+                  <div className="mt-auto flex items-center justify-between gap-2 pt-3">
+                    <Button asChild variant="ghost" size="sm" className="h-8 justify-start gap-1 px-0 text-[11px] text-primary hover:bg-transparent">
+                      <Link to="/products">
+                        View products
+                        <ArrowRight aria-hidden="true" className="size-3" />
+                      </Link>
+                    </Button>
+                    <span className="flex items-center gap-1">
+                      <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-[10px]" onClick={() => openEdit(category)} aria-label={`Edit ${category.name}`}>
+                        <Pencil aria-hidden="true" className="size-3" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-[10px] text-destructive"
+                        onClick={() => setDeleting(category)}
+                        aria-label={`Delete ${category.name}`}
+                      >
+                        <Trash2 aria-hidden="true" className="size-3" />
+                      </Button>
+                    </span>
+                  </div>
                 </div>
               </article>
             );
@@ -193,6 +321,28 @@ export function CategoriesPage() {
           />
         )}
       </SectionCard>
+
+      <FormDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        title={editing ? "Update category" : "Add category"}
+        description="Saved to the categories table in Supabase and published to the website."
+        fields={fields}
+        values={values}
+        onChange={change}
+        onSubmit={submit}
+        pending={createCategory.isPending || updateCategory.isPending}
+        submitLabel={editing ? "Save changes" : "Save category"}
+      />
+
+      <ConfirmDialog
+        open={Boolean(deleting)}
+        onOpenChange={(open) => (open ? null : setDeleting(null))}
+        title="Delete category?"
+        description={`Remove ${deleting?.name ?? "this category"}? Products in it must be moved to another category first.`}
+        pending={deleteCategory.isPending}
+        onConfirm={confirmDelete}
+      />
     </>
   );
 }

@@ -4,6 +4,7 @@ import {
   CircleDollarSign,
   ClipboardList,
   ContactRound,
+  FileText,
   Gauge,
   LayoutGrid,
   ReceiptText,
@@ -48,6 +49,7 @@ export const navigationGroups: NavGroup[] = [
     items: [
       { label: "Dashboard", to: "/", icon: Gauge, description: "Your business at a glance" },
       { label: "Point of sale", to: "/pos", icon: ShoppingCart, description: "Ring up a sale in seconds" },
+      { label: "Z report", to: "/z-report", icon: FileText, description: "End-of-day takings per cashier" },
     ],
   },
   {

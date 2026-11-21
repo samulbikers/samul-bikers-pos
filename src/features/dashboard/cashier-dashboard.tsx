@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
-import { ArrowRight, CircleDollarSign, ReceiptText, ShoppingCart, Wallet } from "lucide-react";
+import { ArrowRight, CircleDollarSign, Download, ReceiptText, ShoppingCart, Wallet } from "lucide-react";
 import { useMemo } from "react";
+import { toast } from "sonner";
 
 import { DataTable } from "@/components/data/data-table";
 import { EmptyState, QueryError, QueryLoading, SupabaseNotice } from "@/components/data/query-state";
@@ -9,7 +10,14 @@ import { PaymentBadge, StatusBadge } from "@/components/data/status-badge";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth/auth-context";
+import { useBranches } from "@/lib/branches/branch-store";
 import { formatKes, formatNairobiDate } from "@/lib/format";
+import {
+  buildZReport,
+  formatReportDate,
+  nairobiDateKey,
+} from "@/lib/reports/z-report";
+import { downloadZReportPdf } from "@/lib/reports/z-report-pdf";
 import { useSales, useSiteSettings } from "@/lib/supabase/queries";
 import type { DbSale } from "@/lib/supabase/types";
 
@@ -20,6 +28,7 @@ function isToday(value: string, now: Date) {
 
 export function CashierDashboard() {
   const { user } = useAuth();
+  const branches = useBranches();
   const salesQuery = useSales(300);
   const settingsQuery = useSiteSettings();
   const now = useMemo(() => new Date(), []);
@@ -35,6 +44,19 @@ export function CashierDashboard() {
   const average = mySales.length ? Math.round(revenue / mySales.length) : 0;
   const recent = mySales.slice(0, 8);
 
+  const downloadToday = () => {
+    if (!user) return;
+    const branch = branches.find((entry) => entry.id === user.branchId)?.name;
+    const report = buildZReport({
+      cashier: user.name,
+      date: nairobiDateKey(now),
+      sales: salesQuery.data ?? [],
+      branch,
+    });
+    downloadZReportPdf(report, settingsQuery.data?.business_name ?? "Samul Bikers");
+    toast.success("Z report downloaded", { description: `${user.name} · ${formatReportDate(report.date)} · PDF` });
+  };
+
   return (
     <>
       <PageHeader
@@ -47,12 +69,18 @@ export function CashierDashboard() {
           </span>
         }
         actions={
-          <Button asChild size="sm" className="h-9 gap-1.5">
-            <Link to="/pos">
-              <ReceiptText aria-hidden="true" className="size-3.5" />
-              Open point of sale
-            </Link>
-          </Button>
+          <>
+            <Button type="button" variant="outline" size="sm" className="h-9 gap-1.5" onClick={downloadToday}>
+              <Download aria-hidden="true" className="size-3.5" />
+              Download Z report PDF
+            </Button>
+            <Button asChild size="sm" className="h-9 gap-1.5">
+              <Link to="/pos">
+                <ReceiptText aria-hidden="true" className="size-3.5" />
+                Open point of sale
+              </Link>
+            </Button>
+          </>
         }
       />
 

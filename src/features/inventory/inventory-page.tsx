@@ -1,4 +1,4 @@
-import { ArrowDownLeft, ArrowUpRight, Boxes, ClipboardCheck, PackageSearch } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, Boxes, ClipboardCheck, PackagePlus, PackageSearch, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -40,6 +40,7 @@ export function InventoryPage() {
   const [stock, setStock] = useState<string>(stockOptions[0]);
   const [selected, setSelected] = useState<CatalogProduct | null>(null);
   const [countValue, setCountValue] = useState("");
+  const [mode, setMode] = useState<"count" | "receive" | "clear">("count");
 
   const products = productsQuery.data ?? [];
 
@@ -57,20 +58,31 @@ export function InventoryPage() {
   const lowCount = products.filter((product) => stockState(product) === "Low stock").length;
   const outCount = products.filter((product) => stockState(product) === "Out of stock").length;
 
-  const openCount = (product: CatalogProduct) => {
+  const openAdjust = (product: CatalogProduct, nextMode: "count" | "receive" | "clear") => {
     setSelected(product);
-    setCountValue(String(product.stock));
+    setMode(nextMode);
+    setCountValue(nextMode === "receive" ? "0" : String(product.stock));
   };
+
+  const nextStock = selected
+    ? mode === "receive"
+      ? selected.stock + Number(countValue || 0)
+      : mode === "clear"
+        ? 0
+        : Number(countValue || 0)
+    : 0;
 
   const saveCount = async () => {
     if (!selected) return;
 
     try {
-      await updateProduct.mutateAsync({ id: selected.id, stock: Number(countValue || 0) });
-      toast.success("Stock count saved", { description: `${selected.title} · ${countValue || 0} units` });
+      await updateProduct.mutateAsync({ id: selected.id, stock: nextStock });
+      toast.success(mode === "receive" ? "Stock received" : mode === "clear" ? "Stock cleared" : "Stock count saved", {
+        description: `${selected.title} · ${nextStock} units saved to Supabase.`,
+      });
       setSelected(null);
     } catch (error) {
-      toast.error("Could not save the stock count", {
+      toast.error("Could not update the stock level", {
         description: error instanceof Error ? error.message : "Unexpected error",
       });
     }
@@ -95,7 +107,7 @@ export function InventoryPage() {
             size="sm"
             className="h-9 gap-1.5"
             disabled={!products.length}
-            onClick={() => openCount(products[0]!)}
+            onClick={() => openAdjust(products[0]!, "count")}
           >
             <ClipboardCheck aria-hidden="true" className="size-3.5" />
             Record stock count
@@ -149,7 +161,7 @@ export function InventoryPage() {
                   <span className="min-w-0">
                     <button
                       type="button"
-                      onClick={() => openCount(product)}
+                      onClick={() => openAdjust(product, "count")}
                       className="block max-w-[230px] truncate text-left font-medium text-primary hover:underline"
                     >
                       {product.title}
@@ -208,6 +220,35 @@ export function InventoryPage() {
                 header: "STATUS",
                 align: "right",
                 render: (product) => <StatusBadge status={stockState(product)} />,
+              },
+              {
+                key: "actions",
+                header: "ACTIONS",
+                align: "right",
+                render: (product) => (
+                  <span className="flex items-center justify-end gap-1">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 gap-1 px-2 text-[10px]"
+                      onClick={() => openAdjust(product, "receive")}
+                    >
+                      <PackagePlus aria-hidden="true" className="size-3" />
+                      Add stock
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 gap-1 px-2 text-[10px] text-destructive"
+                      onClick={() => openAdjust(product, "clear")}
+                    >
+                      <Trash2 aria-hidden="true" className="size-3" />
+                      Clear
+                    </Button>
+                  </span>
+                ),
               },
             ]}
           />
@@ -307,34 +348,52 @@ export function InventoryPage() {
       </section>
 
       <Dialog open={Boolean(selected)} onOpenChange={(open) => !open && setSelected(null)}>
-        <DialogContent className="max-w-[380px]">
+        <DialogContent className="max-w-[400px]">
           <DialogHeader>
-            <DialogTitle className="text-[15px]">Record stock count</DialogTitle>
+            <DialogTitle className="text-[15px]">
+              {mode === "receive" ? "Receive stock" : mode === "clear" ? "Clear stock" : "Record stock count"}
+            </DialogTitle>
             <DialogDescription className="text-[11px]">
               {selected?.title} · currently {selected?.stock} units
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-1.5">
-            <Label htmlFor="stock-count" className="text-[11px]">
-              Counted quantity
-            </Label>
-            <Input
-              id="stock-count"
-              inputMode="numeric"
-              value={countValue}
-              onChange={(event) => setCountValue(event.target.value.replace(/[^0-9]/g, ""))}
-              className="h-9 text-[11px]"
-            />
-            <p className="text-[10px] text-muted-foreground">
-              The counted quantity replaces the current stock level and is logged as an adjustment.
-            </p>
+          <div className="space-y-2">
+            {mode === "clear" ? (
+              <p className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-[11px] text-destructive">
+                This sets the stock level to 0 and logs an adjustment. The product stays on the website but shows as out of stock.
+              </p>
+            ) : (
+              <div className="space-y-1.5">
+                <Label htmlFor="stock-count" className="text-[11px]">
+                  {mode === "receive" ? "Units received" : "Counted quantity"}
+                </Label>
+                <Input
+                  id="stock-count"
+                  inputMode="numeric"
+                  value={countValue}
+                  onChange={(event) => setCountValue(event.target.value.replace(/[^0-9]/g, ""))}
+                  className="h-9 text-[11px]"
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  {mode === "receive"
+                    ? `New stock level will be ${nextStock} units.`
+                    : "The counted quantity replaces the current stock level and is logged as an adjustment."}
+                </p>
+              </div>
+            )}
           </div>
           <DialogFooter className="gap-2">
             <Button type="button" variant="outline" onClick={() => setSelected(null)} className="h-9">
               Cancel
             </Button>
-            <Button type="button" onClick={saveCount} disabled={updateProduct.isPending} className="h-9">
-              {updateProduct.isPending ? "Saving..." : "Save count"}
+            <Button
+              type="button"
+              variant={mode === "clear" ? "destructive" : "default"}
+              onClick={saveCount}
+              disabled={updateProduct.isPending}
+              className="h-9"
+            >
+              {updateProduct.isPending ? "Saving..." : mode === "receive" ? "Add stock" : mode === "clear" ? "Clear stock" : "Save count"}
             </Button>
           </DialogFooter>
         </DialogContent>

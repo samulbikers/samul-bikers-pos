@@ -1,7 +1,9 @@
-import { CircleDollarSign, Info, Receipt, TrendingDown, Wallet } from "lucide-react";
+import { CircleDollarSign, Pencil, Plus, Receipt, Trash2, TrendingDown, Wallet } from "lucide-react";
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import { ProgressRow } from "@/components/data/charts";
+import { ConfirmDialog, FormDialog, type FormField, type FormValues } from "@/components/data/form-dialog";
 import { DataTable } from "@/components/data/data-table";
 import { EmptyState, QueryError, QueryLoading, SupabaseNotice } from "@/components/data/query-state";
 import { SectionCard } from "@/components/data/section-card";
@@ -10,14 +12,55 @@ import { FilterSelect, SearchField, Toolbar } from "@/components/data/toolbar";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { useExpenses } from "@/lib/supabase/queries";
+import {
+  useCreateExpense,
+  useDeleteExpense,
+  useUpdateExpense,
+} from "@/lib/supabase/mutations";
+import type { DbExpense } from "@/lib/supabase/types";
 import { formatDate, formatKes } from "@/lib/format";
 
-const categoryOptions = ["All categories", "Rent", "Salaries", "Utilities", "Transport", "Marketing", "Supplies", "Licences", "Other"] as const;
+const expenseCategories = ["Rent", "Salaries", "Utilities", "Transport", "Marketing", "Supplies", "Licences", "Other"] as const;
+const categoryOptions = ["All categories", ...expenseCategories] as const;
+
+const fields: readonly FormField[] = [
+  { key: "reference", label: "Reference", placeholder: "EXP-0001" },
+  {
+    key: "category",
+    label: "Category",
+    type: "select",
+    options: expenseCategories.map((category) => ({ value: category, label: category })),
+  },
+  { key: "description", label: "Description", full: true, placeholder: "What the money was spent on" },
+  { key: "amount", label: "Amount (KES)", type: "number", step: "0.01" },
+  { key: "spent_on", label: "Date", type: "date" },
+  { key: "paid_by", label: "Paid by", placeholder: "Staff member" },
+  { key: "approved_by", label: "Approved by", placeholder: "Manager" },
+];
+
+const today = () => new Date().toISOString().slice(0, 10);
+const emptyValues: FormValues = {
+  reference: "",
+  category: "Other",
+  description: "",
+  amount: "",
+  spent_on: today(),
+  paid_by: "",
+  approved_by: "",
+};
 
 export function ExpensesPage() {
   const expensesQuery = useExpenses();
+  const createExpense = useCreateExpense();
+  const updateExpense = useUpdateExpense();
+  const deleteExpense = useDeleteExpense();
+
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string>(categoryOptions[0]);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editing, setEditing] = useState<DbExpense | null>(null);
+  const [values, setValues] = useState<FormValues>(emptyValues);
+  const [deleting, setDeleting] = useState<DbExpense | null>(null);
 
   const expenses = expensesQuery.data ?? [];
 
@@ -48,6 +91,75 @@ export function ExpensesPage() {
     null,
   );
 
+  const change = (key: string, value: string) => setValues((current) => ({ ...current, [key]: value }));
+
+  const openCreate = () => {
+    setEditing(null);
+    setValues({ ...emptyValues, spent_on: today() });
+    setDialogOpen(true);
+  };
+
+  const openEdit = (expense: DbExpense) => {
+    setEditing(expense);
+    setValues({
+      reference: expense.reference,
+      category: expense.category,
+      description: expense.description,
+      amount: String(expense.amount),
+      spent_on: expense.spent_on,
+      paid_by: expense.paid_by,
+      approved_by: expense.approved_by,
+    });
+    setDialogOpen(true);
+  };
+
+  const submit = async () => {
+    if (!values["reference"]?.trim() || !values["description"]?.trim() || !values["amount"]) {
+      toast.error("Reference, description and amount are required");
+      return;
+    }
+
+    const payload = {
+      reference: values["reference"].trim(),
+      category: (values["category"] || "Other") as DbExpense["category"],
+      description: values["description"].trim(),
+      amount: Number(values["amount"]),
+      paid_by: values["paid_by"]?.trim() || "—",
+      approved_by: values["approved_by"]?.trim() || "—",
+      spent_on: values["spent_on"] || today(),
+    };
+
+    try {
+      if (editing) {
+        await updateExpense.mutateAsync({ id: editing.id, ...payload });
+        toast.success("Expense updated", { description: `${payload.reference} saved to Supabase.` });
+      } else {
+        await createExpense.mutateAsync(payload);
+        toast.success("Expense added", { description: `${payload.reference} saved to Supabase.` });
+      }
+      setDialogOpen(false);
+      setEditing(null);
+      setValues(emptyValues);
+    } catch (error) {
+      toast.error("Could not save the expense", {
+        description: error instanceof Error ? error.message : "Unexpected error",
+      });
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deleting) return;
+    try {
+      await deleteExpense.mutateAsync(deleting.id);
+      toast.success("Expense deleted", { description: `${deleting.reference} removed from Supabase.` });
+      setDeleting(null);
+    } catch (error) {
+      toast.error("Could not delete the expense", {
+        description: error instanceof Error ? error.message : "Unexpected error",
+      });
+    }
+  };
+
   return (
     <>
       <PageHeader
@@ -62,8 +174,8 @@ export function ExpensesPage() {
           ) : null
         }
         actions={
-          <Button type="button" size="sm" variant="outline" className="h-9 gap-1.5" disabled title="Expense capture is not enabled in this workspace">
-            <Info aria-hidden="true" className="size-3.5" />
+          <Button type="button" size="sm" className="h-9 gap-1.5" onClick={openCreate}>
+            <Plus aria-hidden="true" className="size-3.5" />
             Record expense
           </Button>
         }
@@ -118,7 +230,12 @@ export function ExpensesPage() {
             <div className="px-4 pb-4 sm:px-5">
               <EmptyState
                 title="No expenses recorded"
-                description="Expenses added to the pos_expenses table will be summarised here."
+                description="Record your first expense to start tracking operating costs."
+                action={
+                  <Button type="button" size="sm" className="mt-2 h-8" onClick={openCreate}>
+                    Record expense
+                  </Button>
+                }
               />
             </div>
           ) : (
@@ -127,7 +244,7 @@ export function ExpensesPage() {
               getRowId={(expense) => expense.id}
               emptyMessage="No expenses match these filters."
               caption="Expense register"
-              minWidth="720px"
+              minWidth="900px"
               columns={[
                 {
                   key: "reference",
@@ -167,6 +284,29 @@ export function ExpensesPage() {
                   align: "right",
                   render: (expense) => <span className="whitespace-nowrap font-semibold">{formatKes(Number(expense.amount))}</span>,
                 },
+                {
+                  key: "actions",
+                  header: "ACTIONS",
+                  align: "right",
+                  render: (expense) => (
+                    <span className="flex items-center justify-end gap-1">
+                      <Button type="button" variant="outline" size="sm" className="h-7 gap-1 px-2 text-[10px]" onClick={() => openEdit(expense)}>
+                        <Pencil aria-hidden="true" className="size-3" />
+                        Edit
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 gap-1 px-2 text-[10px] text-destructive"
+                        onClick={() => setDeleting(expense)}
+                      >
+                        <Trash2 aria-hidden="true" className="size-3" />
+                        Delete
+                      </Button>
+                    </span>
+                  ),
+                },
               ]}
             />
           )}
@@ -190,6 +330,28 @@ export function ExpensesPage() {
           )}
         </SectionCard>
       </div>
+
+      <FormDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        title={editing ? "Update expense" : "Record expense"}
+        description="Saved to the pos_expenses table in Supabase."
+        fields={fields}
+        values={values}
+        onChange={change}
+        onSubmit={submit}
+        pending={createExpense.isPending || updateExpense.isPending}
+        submitLabel={editing ? "Save changes" : "Save expense"}
+      />
+
+      <ConfirmDialog
+        open={Boolean(deleting)}
+        onOpenChange={(open) => (open ? null : setDeleting(null))}
+        title="Delete expense?"
+        description={`Remove ${deleting?.reference ?? "this expense"} from the register? This cannot be undone.`}
+        pending={deleteExpense.isPending}
+        onConfirm={confirmDelete}
+      />
     </>
   );
 }

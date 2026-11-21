@@ -25,6 +25,7 @@ import { Route as AppSalesRouteImport } from './routes/_app.sales'
 import { Route as AppSettingsRouteImport } from './routes/_app.settings'
 import { Route as AppStaffRouteImport } from './routes/_app.staff'
 import { Route as AppSuppliersRouteImport } from './routes/_app.suppliers'
+import { Route as AppZReportRouteImport } from './routes/_app.z-report'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -105,6 +106,11 @@ const AppSuppliersRoute = AppSuppliersRouteImport.update({
   path: '/suppliers',
   getParentRoute: () => AppRoute,
 } as any)
+const AppZReportRoute = AppZReportRouteImport.update({
+  id: '/z-report',
+  path: '/z-report',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
@@ -122,6 +128,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof AppSettingsRoute
   '/staff': typeof AppStaffRoute
   '/suppliers': typeof AppSuppliersRoute
+  '/z-report': typeof AppZReportRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
@@ -138,6 +145,7 @@ export interface FileRoutesByTo {
   '/settings': typeof AppSettingsRoute
   '/staff': typeof AppStaffRoute
   '/suppliers': typeof AppSuppliersRoute
+  '/z-report': typeof AppZReportRoute
   '/': typeof AppIndexRoute
 }
 export interface FileRoutesById {
@@ -157,6 +165,7 @@ export interface FileRoutesById {
   '/_app/settings': typeof AppSettingsRoute
   '/_app/staff': typeof AppStaffRoute
   '/_app/suppliers': typeof AppSuppliersRoute
+  '/_app/z-report': typeof AppZReportRoute
   '/_app/': typeof AppIndexRoute
 }
 export interface FileRouteTypes {
@@ -177,6 +186,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/staff'
     | '/suppliers'
+    | '/z-report'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
@@ -193,6 +203,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/staff'
     | '/suppliers'
+    | '/z-report'
     | '/'
   id:
     | '__root__'
@@ -211,6 +222,7 @@ export interface FileRouteTypes {
     | '/_app/settings'
     | '/_app/staff'
     | '/_app/suppliers'
+    | '/_app/z-report'
     | '/_app/'
   fileRoutesById: FileRoutesById
 }
@@ -333,6 +345,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSuppliersRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/z-report': {
+      id: '/_app/z-report'
+      path: '/z-report'
+      fullPath: '/z-report'
+      preLoaderRoute: typeof AppZReportRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
@@ -350,6 +369,7 @@ interface AppRouteChildren {
   AppSettingsRoute: typeof AppSettingsRoute
   AppStaffRoute: typeof AppStaffRoute
   AppSuppliersRoute: typeof AppSuppliersRoute
+  AppZReportRoute: typeof AppZReportRoute
   AppIndexRoute: typeof AppIndexRoute
 }
 
@@ -367,6 +387,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppSettingsRoute: AppSettingsRoute,
   AppStaffRoute: AppStaffRoute,
   AppSuppliersRoute: AppSuppliersRoute,
+  AppZReportRoute: AppZReportRoute,
   AppIndexRoute: AppIndexRoute,
 }
 

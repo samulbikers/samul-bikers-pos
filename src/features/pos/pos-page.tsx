@@ -1,9 +1,12 @@
 import {
   Banknote,
+  Barcode,
   Check,
   CreditCard,
+  Download,
   Minus,
   Plus,
+  Printer,
   ReceiptText,
   ScanLine,
   ShoppingCart,
@@ -34,6 +37,16 @@ import {
 } from "@/components/ui/sheet";
 import { useCustomers, useProducts, useSiteSettings, type CatalogProduct } from "@/lib/supabase/queries";
 import { useCompleteSale } from "@/lib/supabase/mutations";
+import { useAuth } from "@/lib/auth/auth-context";
+import { useBranches } from "@/lib/branches/branch-store";
+import { playScanBeep } from "@/lib/pos/beep";
+import {
+  buildReceipt,
+  downloadReceiptPdf,
+  printReceipt,
+  type ReceiptData,
+} from "@/lib/receipts/receipt";
+import { ReceiptDocument } from "@/features/sales/receipt-document";
 import { formatKes } from "@/lib/format";
 
 const VAT_RATE = 0.16;
@@ -60,6 +73,8 @@ function ProductImage({ product, className }: { product: CatalogProduct; classNa
 }
 
 export function PosPage() {
+  const { user } = useAuth();
+  const branches = useBranches();
   const productsQuery = useProducts();
   const customersQuery = useCustomers();
   const settingsQuery = useSiteSettings();
@@ -71,7 +86,9 @@ export function PosPage() {
   const [customerId, setCustomerId] = useState("walk-in");
   const [method, setMethod] = useState<PaymentMethod>("M-Pesa");
   const [discount, setDiscount] = useState("0");
-  const [completed, setCompleted] = useState<{ receipt: string; total: number; method: PaymentMethod; customer: string } | null>(null);
+  const [scanValue, setScanValue] = useState("");
+  const [completed, setCompleted] = useState<{ receiptData: ReceiptData } | null>(null);
+  const branchName = branches.find((branch) => branch.id === user?.branchId)?.name ?? "Main branch";
 
   const products = productsQuery.data ?? [];
   const customers = customersQuery.data ?? [];
@@ -106,6 +123,7 @@ export function PosPage() {
       toast.error(`${product.title} is out of stock`);
       return;
     }
+    playScanBeep();
     setCart((current) => {
       const existing = current.find((line) => line.product.id === product.id);
       if (!existing) return [...current, { product, quantity: 1 }];
@@ -117,6 +135,34 @@ export function PosPage() {
         line.product.id === product.id ? { ...line, quantity: line.quantity + 1 } : line,
       );
     });
+  };
+
+  const handleScan = (event: React.FormEvent) => {
+    event.preventDefault();
+    const code = scanValue.trim().toLowerCase();
+    if (!code) return;
+
+    const product = products.find(
+      (entry) =>
+        entry.sku.toLowerCase() === code ||
+        entry.title.toLowerCase() === code ||
+        entry.id.toLowerCase() === code ||
+        entry.slug.toLowerCase() === code,
+    );
+    if (!product) {
+      toast.error("Barcode not recognised", { description: `No product matches “${scanValue.trim()}”.` });
+      setScanValue("");
+      return;
+    }
+    if (product.stock <= 0) {
+      toast.error(`${product.title} is out of stock`);
+      setScanValue("");
+      return;
+    }
+
+    addToCart(product);
+    toast.success(`${product.title} added`, { description: `Scanned ${product.sku}` });
+    setScanValue("");
   };
 
   const changeQuantity = (productId: string, delta: number) => {
@@ -145,7 +191,7 @@ export function PosPage() {
       const sale = await completeSale.mutateAsync({
         customerId: customerId === "walk-in" ? null : customerId,
         customerName: customerLabel,
-        cashier: "Store manager",
+        cashier: user?.name ?? "Store manager",
         paymentMethod: method,
         discount: discountValue,
         lines: cart.map((line) => ({
@@ -156,7 +202,29 @@ export function PosPage() {
         })),
       });
 
-      setCompleted({ receipt: sale.receipt, total: Number(sale.total), method, customer: customerLabel });
+      const receiptData = buildReceipt({
+        receipt: sale.receipt,
+        createdAt: sale.created_at ?? new Date().toISOString(),
+        cashier: user?.name ?? "Store manager",
+        cashierId: user?.username,
+        customer: customerLabel,
+        lines: cart.map((line) => ({
+          title: line.product.title,
+          quantity: line.quantity,
+          unitPrice: line.product.price,
+          lineTotal: line.product.price * line.quantity,
+        })),
+        subtotal: Number(sale.subtotal ?? subtotal),
+        discount: Number(sale.discount ?? discountValue),
+        vat: Number(sale.vat ?? vat),
+        total: Number(sale.total ?? total),
+        paymentMethod: method,
+        status: sale.status,
+        settings: settingsQuery.data,
+        branch: branchName,
+      });
+
+      setCompleted({ receiptData });
       setCart([]);
       setDiscount("0");
       toast.success(`Sale ${sale.receipt} recorded`, { description: `${formatKes(Number(sale.total))} · ${method}` });
@@ -330,7 +398,7 @@ export function PosPage() {
               </span>
             )}
             <span className="inline-flex h-6 items-center gap-1.5 rounded-md border border-border bg-card px-2 text-[10px] font-medium text-foreground">
-              Till 01 · Store manager
+              Till 01 · {user?.name ?? "Store manager"} · {branchName}
             </span>
           </>
         }
@@ -375,6 +443,27 @@ export function PosPage() {
             </label>
             <span className="text-[10px] text-muted-foreground">{visibleProducts.length} products</span>
           </div>
+
+          <form
+            onSubmit={handleScan}
+            className="mt-2 flex items-center gap-2 rounded-md border border-amber/40 bg-amber/5 p-1.5"
+          >
+            <Barcode aria-hidden="true" className="ml-1 size-4 shrink-0 text-amber" />
+            <label className="sr-only" htmlFor="pos-scan">
+              Scan barcode or SKU
+            </label>
+            <input
+              id="pos-scan"
+              value={scanValue}
+              onChange={(event) => setScanValue(event.target.value)}
+              placeholder="Scan barcode / SKU, then press Enter"
+              autoComplete="off"
+              className="h-7 min-w-0 flex-1 bg-transparent text-[11px] outline-none placeholder:text-muted-foreground"
+            />
+            <Button type="submit" size="sm" variant="outline" className="h-7 px-2 text-[10px]">
+              Add
+            </Button>
+          </form>
 
           <div className="mt-3 flex flex-wrap gap-1.5">
             {categories.map((item) => {
@@ -480,54 +569,39 @@ export function PosPage() {
       </div>
 
       <Dialog open={Boolean(completed)} onOpenChange={(open) => !open && setCompleted(null)}>
-        <DialogContent className="max-w-[380px]">
+        <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-[420px] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-[15px]">Receipt</DialogTitle>
-            <DialogDescription className="text-[11px]">Saved to the shop database.</DialogDescription>
+            <DialogTitle className="text-[15px]">Official receipt</DialogTitle>
+            <DialogDescription className="text-[11px]">
+              Saved to Supabase · print or download as PDF.
+            </DialogDescription>
           </DialogHeader>
-          {completed && (
-            <div className="rounded-lg border border-dashed border-border bg-muted/30 p-4 font-mono text-[11px]">
-              <p className="text-center text-[12px] font-semibold">
-                {(settingsQuery.data?.business_name ?? "SAMUL BIKERS").toUpperCase()}
-              </p>
-              <p className="mt-0.5 text-center text-[10px] text-muted-foreground">
-                {settingsQuery.data?.address_line1 ?? "Nairobi, Kenya"} · {settingsQuery.data?.phone ?? ""}
-              </p>
-              <div className="my-3 border-t border-dashed border-border" />
-              <p className="flex justify-between">
-                <span className="text-muted-foreground">Receipt</span>
-                <span>{completed.receipt}</span>
-              </p>
-              <p className="mt-1 flex justify-between">
-                <span className="text-muted-foreground">Customer</span>
-                <span>{completed.customer}</span>
-              </p>
-              <p className="mt-1 flex justify-between">
-                <span className="text-muted-foreground">Payment</span>
-                <span>{completed.method}</span>
-              </p>
-              <div className="my-3 border-t border-dashed border-border" />
-              <p className="flex justify-between text-[12px] font-semibold">
-                <span>Total paid</span>
-                <span>{formatKes(completed.total)}</span>
-              </p>
-              <p className="mt-3 text-center text-[9px] text-muted-foreground">Asante sana · Ride safe</p>
-            </div>
-          )}
+          {completed && <ReceiptDocument data={completed.receiptData} />}
           <DialogFooter className="gap-2">
             <Button type="button" variant="outline" onClick={() => setCompleted(null)} className="h-9">
               Close
             </Button>
-            <Button
-              type="button"
-              onClick={() => {
-                window.print();
-              }}
-              className="h-9 gap-1.5"
-            >
-              <ReceiptText aria-hidden="true" className="size-3.5" />
-              Print receipt
-            </Button>
+            {completed && (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => printReceipt(completed.receiptData)}
+                  className="h-9 gap-1.5"
+                >
+                  <Printer aria-hidden="true" className="size-3.5" />
+                  Print
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => downloadReceiptPdf(completed.receiptData)}
+                  className="h-9 gap-1.5"
+                >
+                  <Download aria-hidden="true" className="size-3.5" />
+                  PDF
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

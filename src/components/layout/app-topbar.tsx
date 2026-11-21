@@ -181,7 +181,7 @@ export function AppTopbar({ title, description }: { title: string; description: 
               <span className="block">{user?.name ?? "Signed out"}</span>
               <span className="mt-0.5 block text-[10px] font-normal text-muted-foreground">
                 {user ? roleLabels[user.role] : ""}
-                {user ? ` · ${user.email}` : ""}
+                {user ? ` · @${user.username}` : ""}
               </span>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />

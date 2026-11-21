@@ -11,28 +11,35 @@ import {
 import {
   authenticate,
   clearSession,
-  createCashierAccount,
+  createStaffAccount,
+  deleteStaffAccount,
   loadAccounts,
   loadSession,
+  resetAccountPin,
   saveSession,
+  updateStaffAccount,
   type AuthAccount,
   type AuthSession,
-  type NewCashierInput,
+  type NewStaffInput,
+  type UpdateStaffInput,
 } from "./accounts";
 
 type SignInResult = { ok: true; user: AuthSession } | { ok: false; error: string };
 
-type AddCashierResult =
-  | { ok: true; account: AuthAccount; accounts: AuthAccount[] }
+type AccountResult =
+  | { ok: true; account: AuthAccount }
   | { ok: false; error: string };
 
 type AuthContextValue = {
   user: AuthSession | null;
   accounts: AuthAccount[];
   isReady: boolean;
-  signIn: (email: string, password: string) => SignInResult;
+  signIn: (username: string, pin: string) => Promise<SignInResult>;
   signOut: () => void;
-  addCashier: (input: NewCashierInput) => AddCashierResult;
+  addStaff: (input: NewStaffInput) => Promise<AccountResult>;
+  updateStaff: (accountId: string, input: UpdateStaffInput) => Promise<AccountResult>;
+  deleteStaff: (accountId: string) => Promise<AccountResult>;
+  resetPin: (accountId: string, pin: string) => Promise<AccountResult>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -42,28 +49,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [accounts, setAccounts] = useState<AuthAccount[]>([]);
   const [isReady, setIsReady] = useState(false);
 
-  useEffect(() => {
-    setAccounts(loadAccounts());
-    setUser(loadSession());
-    setIsReady(true);
+  const refreshAccounts = useCallback(async () => {
+    try {
+      setAccounts(await loadAccounts());
+    } catch {
+      setAccounts([]);
+    }
   }, []);
 
-  const signIn = useCallback((email: string, password: string): SignInResult => {
-    const account = authenticate(email, password);
-    if (!account) {
-      return { ok: false, error: "Email or password is incorrect." };
-    }
+  useEffect(() => {
+    void (async () => {
+      await refreshAccounts();
+      setUser(loadSession());
+      setIsReady(true);
+    })();
+  }, [refreshAccounts]);
 
-    saveSession(account);
-    const session = {
-      id: account.id,
-      name: account.name,
-      email: account.email,
-      role: account.role,
-    };
-    setUser(session);
-    setAccounts((current) => (current.length ? current : loadAccounts()));
-    return { ok: true, user: session };
+  const signIn = useCallback(async (username: string, pin: string): Promise<SignInResult> => {
+    try {
+      const account = await authenticate(username, pin);
+      if (!account) {
+        return { ok: false, error: "Username or PIN is incorrect." };
+      }
+
+      saveSession(account);
+      const session = {
+        id: account.id,
+        name: account.name,
+        username: account.username,
+        role: account.role,
+        branchId: account.branchId,
+      };
+      setUser(session);
+      return { ok: true, user: session };
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : "Could not reach Supabase.",
+      };
+    }
   }, []);
 
   const signOut = useCallback(() => {
@@ -71,17 +95,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
-  const addCashier = useCallback((input: NewCashierInput): AddCashierResult => {
-    const result = createCashierAccount(input);
-    if (!result.ok) return result;
+  const addStaff = useCallback(
+    async (input: NewStaffInput): Promise<AccountResult> => {
+      const result = await createStaffAccount(input);
+      if (result.ok) await refreshAccounts();
+      return result;
+    },
+    [refreshAccounts],
+  );
 
-    setAccounts(result.accounts);
-    return result;
-  }, []);
+  const updateStaff = useCallback(
+    async (accountId: string, input: UpdateStaffInput): Promise<AccountResult> => {
+      const result = await updateStaffAccount(accountId, input);
+      if (result.ok) await refreshAccounts();
+      return result;
+    },
+    [refreshAccounts],
+  );
+
+  const deleteStaff = useCallback(
+    async (accountId: string): Promise<AccountResult> => {
+      const result = await deleteStaffAccount(accountId);
+      if (result.ok) await refreshAccounts();
+      return result;
+    },
+    [refreshAccounts],
+  );
+
+  const resetPin = useCallback(
+    async (accountId: string, pin: string): Promise<AccountResult> => {
+      const result = await resetAccountPin(accountId, pin);
+      if (result.ok) await refreshAccounts();
+      return result;
+    },
+    [refreshAccounts],
+  );
 
   const value = useMemo<AuthContextValue>(
-    () => ({ user, accounts, isReady, signIn, signOut, addCashier }),
-    [user, accounts, isReady, signIn, signOut, addCashier],
+    () => ({ user, accounts, isReady, signIn, signOut, addStaff, updateStaff, deleteStaff, resetPin }),
+    [user, accounts, isReady, signIn, signOut, addStaff, updateStaff, deleteStaff, resetPin],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

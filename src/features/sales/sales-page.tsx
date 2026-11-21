@@ -1,4 +1,4 @@
-import { Banknote, CircleDollarSign, ReceiptText, RotateCcw, TrendingUp } from "lucide-react";
+import { Banknote, CircleDollarSign, Download, Printer, ReceiptText, RotateCcw, TrendingUp } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
@@ -18,9 +18,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useSales } from "@/lib/supabase/queries";
+import { useSales, useSiteSettings } from "@/lib/supabase/queries";
 import { useRefundSale } from "@/lib/supabase/mutations";
 import type { DbSale } from "@/lib/supabase/types";
+import { downloadReceiptPdf, printReceipt, receiptFromSale } from "@/lib/receipts/receipt";
+import { ReceiptDocument } from "@/features/sales/receipt-document";
+import { useAuth } from "@/lib/auth/auth-context";
+import { useBranches } from "@/lib/branches/branch-store";
 import { formatDate, formatKes } from "@/lib/format";
 
 const paymentOptions = ["All methods", "M-Pesa", "Cash", "Card"] as const;
@@ -28,7 +32,11 @@ const statusOptions = ["All statuses", "Paid", "Part paid", "Refunded"] as const
 
 export function SalesPage() {
   const salesQuery = useSales(200);
+  const settingsQuery = useSiteSettings();
+  const { user } = useAuth();
+  const branches = useBranches();
   const refundSale = useRefundSale();
+  const branchName = branches.find((branch) => branch.id === user?.branchId)?.name ?? "Main branch";
 
   const [query, setQuery] = useState("");
   const [method, setMethod] = useState<string>(paymentOptions[0]);
@@ -212,7 +220,7 @@ export function SalesPage() {
       </section>
 
       <Dialog open={Boolean(selected)} onOpenChange={(open) => !open && setSelected(null)}>
-        <DialogContent className="max-w-[460px]">
+        <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-[440px] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-[15px]">
               {selected?.receipt} · {selected && formatKes(Number(selected.total))}
@@ -221,47 +229,35 @@ export function SalesPage() {
               {selected && formatDate(selected.created_at)} · {selected?.cashier} · {selected?.payment_method}
             </DialogDescription>
           </DialogHeader>
-          <ul className="divide-y divide-border rounded-md border border-border">
-            {selected?.pos_sale_items?.map((item) => (
-              <li key={item.id} className="flex items-center justify-between gap-3 px-3 py-2 text-[11px]">
-                <span className="min-w-0">
-                  <span className="block truncate text-card-foreground">{item.product_title}</span>
-                  <span className="text-[10px] text-muted-foreground">
-                    {item.quantity} × {formatKes(Number(item.unit_price))}
-                  </span>
-                </span>
-                <span className="shrink-0 font-semibold text-card-foreground">
-                  {formatKes(Number(item.line_total))}
-                </span>
-              </li>
-            ))}
-          </ul>
-          <dl className="space-y-1 text-[11px]">
-            <div className="flex items-center justify-between">
-              <dt className="text-muted-foreground">Subtotal</dt>
-              <dd className="font-medium text-card-foreground">{selected && formatKes(Number(selected.subtotal))}</dd>
-            </div>
-            <div className="flex items-center justify-between">
-              <dt className="text-muted-foreground">Discount</dt>
-              <dd className="font-medium text-card-foreground">{selected && formatKes(Number(selected.discount))}</dd>
-            </div>
-            <div className="flex items-center justify-between">
-              <dt className="text-muted-foreground">VAT (16%)</dt>
-              <dd className="font-medium text-card-foreground">{selected && formatKes(Number(selected.vat))}</dd>
-            </div>
-            <div className="flex items-center justify-between">
-              <dt className="text-muted-foreground">Customer</dt>
-              <dd className="font-medium text-card-foreground">{selected?.customer_name}</dd>
-            </div>
-            <div className="flex items-center justify-between">
-              <dt className="text-muted-foreground">Status</dt>
-              <dd>{selected && <StatusBadge status={selected.status} />}</dd>
-            </div>
-          </dl>
+          {selected && (
+            <ReceiptDocument data={receiptFromSale(selected, settingsQuery.data, branchName)} />
+          )}
           <DialogFooter className="gap-2">
             <Button type="button" variant="outline" onClick={() => setSelected(null)} className="h-9">
               Close
             </Button>
+            {selected && (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-9 gap-1.5"
+                  onClick={() => printReceipt(receiptFromSale(selected, settingsQuery.data, branchName))}
+                >
+                  <Printer aria-hidden="true" className="size-3.5" />
+                  Print
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-9 gap-1.5"
+                  onClick={() => downloadReceiptPdf(receiptFromSale(selected, settingsQuery.data, branchName))}
+                >
+                  <Download aria-hidden="true" className="size-3.5" />
+                  PDF
+                </Button>
+              </>
+            )}
             <Button
               type="button"
               variant="destructive"
@@ -270,7 +266,7 @@ export function SalesPage() {
               onClick={() => selected && handleRefund(selected)}
             >
               <RotateCcw aria-hidden="true" className="size-3.5" />
-              {refundSale.isPending ? "Refunding..." : "Refund receipt"}
+              {refundSale.isPending ? "Refunding..." : "Refund"}
             </Button>
           </DialogFooter>
         </DialogContent>

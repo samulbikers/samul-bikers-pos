@@ -17,12 +17,13 @@ export function isCashier(role: AppRole) {
 }
 
 /**
- * Cashiers only reach the point of sale and the limited dashboard. Every other
- * role keeps the full workspace.
+ * Cashiers only reach the point of sale, their limited dashboard and their own
+ * Z report. Every other role keeps the full workspace.
  */
 export function canAccessPath(role: AppRole, path: string) {
   if (!isCashier(role)) return true;
   if (path === "/") return true;
+  if (path === "/z-report" || path.startsWith("/z-report/")) return true;
   return path === "/pos" || path.startsWith("/pos/");
 }
 

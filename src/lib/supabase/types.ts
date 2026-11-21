@@ -1,5 +1,31 @@
 export type StockStatus = "in_stock" | "out_of_stock" | "available_on_order";
 
+export type DbBranch = {
+  id: string;
+  name: string;
+  city: string;
+  address: string;
+  phone: string;
+  manager: string;
+  status: string;
+  staff: number;
+  monthly_revenue: number;
+  stock_value: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type DbStaffAccount = {
+  id: string;
+  name: string;
+  username: string;
+  role: "owner" | "manager" | "cashier";
+  branch_id: string | null;
+  shift: string;
+  source: "seed" | "manager";
+  created_at: string;
+};
+
 export type DbCategory = {
   id: string;
   name: string;

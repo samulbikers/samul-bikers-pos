@@ -1,26 +1,53 @@
-# Samul Bikers Showroom
+# Samul Bikers POS
 
-@project:a3b41043-06df-41be-b3f7-f69071782c0b:"Samul Bikers Digital Showroom" 
-
-Work on the look UI First.
-
-This project was built with [Lovable](https://lovable.dev).
-
-## Build with Lovable
-
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/e668f85b-08e6-483b-bf28-ad7cd3cfcfd3).
-
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
+Point-of-sale, inventory, staff and reporting app for Samul Bikers, built with TanStack Start and Supabase.
 
 ## Development
 
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+You need Node.js and bun (or npm).
 
 ```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
-npm run dev
+bun install
+cp .env.example .env.local
+bun run dev
 ```
+
+Fill `.env.local` from the Supabase project settings:
+
+```sh
+VITE_SUPABASE_URL=https://<project-ref>.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_<key>
+```
+
+## Database
+
+All business data lives in Supabase. Schema changes belong in `supabase/migrations/`.
+
+To apply migrations:
+
+```sh
+supabase login
+supabase link --project-ref <project-ref>
+supabase db push
+```
+
+You can also paste the migration SQL into the Supabase SQL editor.
+
+The app uses:
+
+- `products`, `categories` for the website catalogue and POS.
+- `pos_customers`, `pos_sales`, `pos_sale_items` for receipts.
+- `pos_expenses`, `pos_suppliers`, `pos_purchase_orders` for operations.
+- `pos_inventory_movements` for stock audit history.
+- `pos_branches` and `pos_staff_accounts` for branch logins. Staff PINs are hashed and only exposed through the `pos_staff_*` RPCs.
+
+## Sign-in
+
+Staff sign in with a username and 4-digit PIN. Demo accounts:
+
+| Role | Username | PIN |
+| --- | --- | --- |
+| Owner | `samson` | `1234` |
+| Store manager | `miriam` | `2468` |
+| Cashier | `lucy` | `1234` |
+| Cashier | `esther` | `4321` |

@@ -1,13 +1,14 @@
+import { requireSupabase } from "@/lib/supabase/client";
+import type { DbStaffAccount } from "@/lib/supabase/types";
 import type { AppRole } from "./roles";
 
 export type AuthAccount = {
   id: string;
   name: string;
-  email: string;
+  username: string;
   role: AppRole;
-  password: string;
-  branchId?: string;
-  shift?: string;
+  branchId?: string | undefined;
+  shift?: string | undefined;
   createdAt: string;
   source: "seed" | "manager";
 };
@@ -15,136 +16,82 @@ export type AuthAccount = {
 export type AuthSession = {
   id: string;
   name: string;
-  email: string;
+  username: string;
   role: AppRole;
+  branchId?: string | undefined;
 };
 
-export type NewCashierInput = {
+export type NewStaffInput = {
   name: string;
-  email: string;
-  password: string;
+  username: string;
+  pin: string;
+  role: "cashier" | "manager";
   branchId: string;
   shift: string;
 };
 
-type CashierResult =
-  | { ok: true; account: AuthAccount; accounts: AuthAccount[] }
+export type UpdateStaffInput = {
+  name: string;
+  username: string;
+  role: "cashier" | "manager";
+  branchId: string;
+  shift: string;
+};
+
+export type NewCashierInput = Omit<NewStaffInput, "role">;
+
+export type AccountResult =
+  | { ok: true; account: AuthAccount }
   | { ok: false; error: string };
 
-const ACCOUNTS_KEY = "samul-pos-accounts";
 const SESSION_KEY = "samul-pos-session";
-
-// Preview-only sign-in: credentials live in this browser so role access can be
-// tried without a backend. Replace with Supabase auth before going live.
-export const seedAccounts: AuthAccount[] = [
-  {
-    id: "acct-owner",
-    name: "Samson Muli",
-    email: "samson@samulbikers.co.ke",
-    role: "owner",
-    password: "owner123",
-    createdAt: "2026-01-05T08:00:00.000Z",
-    source: "seed",
-  },
-  {
-    id: "acct-manager",
-    name: "Miriam Wambui",
-    email: "miriam@samulbikers.co.ke",
-    role: "manager",
-    password: "manager123",
-    branchId: "br-01",
-    shift: "08:00 – 17:00",
-    createdAt: "2026-01-05T08:00:00.000Z",
-    source: "seed",
-  },
-  {
-    id: "acct-cashier-lucy",
-    name: "Lucy Achieng",
-    email: "lucy@samulbikers.co.ke",
-    role: "cashier",
-    password: "cashier123",
-    branchId: "br-01",
-    shift: "09:00 – 18:00",
-    createdAt: "2026-01-05T08:00:00.000Z",
-    source: "seed",
-  },
-  {
-    id: "acct-cashier-esther",
-    name: "Esther Njoki",
-    email: "esther@samulbikers.co.ke",
-    role: "cashier",
-    password: "cashier123",
-    branchId: "br-02",
-    shift: "09:00 – 18:00",
-    createdAt: "2026-01-05T08:00:00.000Z",
-    source: "seed",
-  },
-];
+const roles: AppRole[] = ["owner", "manager", "cashier"];
 
 export const demoAccounts = [
-  { label: "Store manager", email: "miriam@samulbikers.co.ke", password: "manager123" },
-  { label: "Cashier", email: "lucy@samulbikers.co.ke", password: "cashier123" },
+  { label: "Store manager", username: "miriam", pin: "2468" },
+  { label: "Cashier", username: "lucy", pin: "1234" },
 ] as const;
-
-const roles: AppRole[] = ["owner", "manager", "cashier"];
 
 function hasStorage() {
   return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
 }
 
-function isAccount(value: unknown): value is AuthAccount {
-  if (!value || typeof value !== "object") return false;
-  const account = value as Record<string, unknown>;
-  return (
-    typeof account["id"] === "string" &&
-    typeof account["name"] === "string" &&
-    typeof account["email"] === "string" &&
-    typeof account["password"] === "string" &&
-    roles.includes(account["role"] as AppRole)
-  );
+export function toAccount(row: DbStaffAccount): AuthAccount {
+  return {
+    id: row.id,
+    name: row.name,
+    username: row.username,
+    role: row.role,
+    branchId: row.branch_id ?? undefined,
+    shift: row.shift,
+    createdAt: row.created_at,
+    source: row.source,
+  };
 }
 
-export function loadAccounts(): AuthAccount[] {
-  if (!hasStorage()) return seedAccounts;
-
-  try {
-    const raw = window.localStorage.getItem(ACCOUNTS_KEY);
-    if (!raw) {
-      window.localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(seedAccounts));
-      return seedAccounts;
-    }
-
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return seedAccounts;
-
-    const accounts = parsed.filter(isAccount);
-    return accounts.length ? accounts : seedAccounts;
-  } catch {
-    return seedAccounts;
-  }
+export async function loadAccounts(): Promise<AuthAccount[]> {
+  const { data, error } = await requireSupabase().rpc("pos_staff_list");
+  if (error) throw error;
+  return ((data ?? []) as DbStaffAccount[]).map(toAccount);
 }
 
-function saveAccounts(accounts: AuthAccount[]) {
-  if (!hasStorage()) return;
-  window.localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts));
-}
-
-export function authenticate(email: string, password: string): AuthAccount | null {
-  const normalizedEmail = email.trim().toLowerCase();
-  return (
-    loadAccounts().find(
-      (account) =>
-        account.email.toLowerCase() === normalizedEmail && account.password === password,
-    ) ?? null
-  );
+export async function authenticate(username: string, pin: string): Promise<AuthAccount | null> {
+  const { data, error } = await requireSupabase().rpc("pos_staff_login", {
+    p_username: username.trim(),
+    p_pin: pin,
+  });
+  if (error) throw error;
+  const rows = (data ?? []) as DbStaffAccount[];
+  return rows[0] ? toAccount(rows[0]) : null;
 }
 
 export function toSession(account: AuthAccount): AuthSession {
   return {
     id: account.id,
     name: account.name,
-    email: account.email,
+    username: account.username,
     role: account.role,
+    branchId: account.branchId,
   };
 }
 
@@ -162,7 +109,7 @@ export function loadSession(): AuthSession | null {
     if (
       typeof session["id"] !== "string" ||
       typeof session["name"] !== "string" ||
-      typeof session["email"] !== "string" ||
+      typeof session["username"] !== "string" ||
       !roles.includes(session["role"] as AppRole)
     ) {
       return null;
@@ -171,8 +118,9 @@ export function loadSession(): AuthSession | null {
     return {
       id: session["id"],
       name: session["name"],
-      email: session["email"],
+      username: session["username"],
       role: session["role"] as AppRole,
+      branchId: typeof session["branchId"] === "string" ? session["branchId"] : undefined,
     };
   } catch {
     return null;
@@ -189,37 +137,91 @@ export function clearSession() {
   window.localStorage.removeItem(SESSION_KEY);
 }
 
-export function createCashierAccount(input: NewCashierInput): CashierResult {
-  const name = input.name.trim();
-  const email = input.email.trim().toLowerCase();
-  const password = input.password;
-  const accounts = loadAccounts();
-
-  if (name.length < 2) return { ok: false, error: "Enter the cashier's full name." };
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return { ok: false, error: "Enter a valid email address." };
-  }
-  if (password.length < 6) {
-    return { ok: false, error: "Use a password of at least 6 characters." };
-  }
-  if (accounts.some((account) => account.email.toLowerCase() === email)) {
-    return { ok: false, error: "An account with that email already exists." };
-  }
-
-  const account: AuthAccount = {
-    id: `acct-cashier-${Date.now().toString(36)}`,
-    name,
-    email,
-    role: "cashier",
-    password,
-    branchId: input.branchId,
-    shift: input.shift.trim() || "09:00 – 18:00",
-    createdAt: new Date().toISOString(),
-    source: "manager",
+function failure(error: unknown): AccountResult {
+  return {
+    ok: false,
+    error: error instanceof Error ? error.message : "Unexpected error",
   };
+}
 
-  const next = [...accounts, account];
-  saveAccounts(next);
+export async function createStaffAccount(input: NewStaffInput): Promise<AccountResult> {
+  try {
+    const { data, error } = await requireSupabase().rpc("pos_staff_create", {
+      p_name: input.name.trim(),
+      p_username: input.username.trim().toLowerCase(),
+      p_pin: input.pin,
+      p_role: input.role,
+      p_branch_id: input.branchId,
+      p_shift: input.shift,
+    });
+    if (error) throw error;
+    const row = ((data ?? []) as DbStaffAccount[])[0];
+    if (!row) throw new Error("The account was not created.");
+    return { ok: true, account: toAccount(row) };
+  } catch (error) {
+    return failure(error);
+  }
+}
 
-  return { ok: true, account, accounts: next };
+export async function createCashierAccount(input: NewCashierInput): Promise<AccountResult> {
+  return createStaffAccount({ ...input, role: "cashier" });
+}
+
+export async function updateStaffAccount(
+  accountId: string,
+  input: UpdateStaffInput,
+): Promise<AccountResult> {
+  try {
+    const { data, error } = await requireSupabase().rpc("pos_staff_update", {
+      p_id: accountId,
+      p_name: input.name.trim(),
+      p_username: input.username.trim().toLowerCase(),
+      p_role: input.role,
+      p_branch_id: input.branchId,
+      p_shift: input.shift,
+    });
+    if (error) throw error;
+    const row = ((data ?? []) as DbStaffAccount[])[0];
+    if (!row) throw new Error("The account was not updated.");
+    return { ok: true, account: toAccount(row) };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function resetAccountPin(accountId: string, pin: string): Promise<AccountResult> {
+  try {
+    const { data, error } = await requireSupabase().rpc("pos_staff_reset_pin", {
+      p_id: accountId,
+      p_pin: pin,
+    });
+    if (error) throw error;
+    const row = ((data ?? []) as DbStaffAccount[])[0];
+    if (!row) throw new Error("The PIN was not reset.");
+    return { ok: true, account: toAccount(row) };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function deleteStaffAccount(accountId: string): Promise<AccountResult> {
+  try {
+    const { data, error } = await requireSupabase().rpc("pos_staff_delete", {
+      p_id: accountId,
+    });
+    if (error) throw error;
+    return {
+      ok: true,
+      account: {
+        id: accountId,
+        name: "",
+        username: "",
+        role: "cashier",
+        createdAt: new Date().toISOString(),
+        source: "manager",
+      },
+    };
+  } catch (error) {
+    return failure(error);
+  }
 }

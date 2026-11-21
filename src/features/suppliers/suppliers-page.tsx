@@ -1,17 +1,64 @@
-import { CircleDollarSign, Clock, Package, Star, Truck } from "lucide-react";
+import { CircleDollarSign, Clock, Package, Pencil, Plus, Star, Trash2, Truck } from "lucide-react";
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 
+import { ConfirmDialog, FormDialog, type FormField, type FormValues } from "@/components/data/form-dialog";
 import { DataTable } from "@/components/data/data-table";
 import { EmptyState, QueryError, QueryLoading, SupabaseNotice } from "@/components/data/query-state";
 import { StatCard } from "@/components/data/stat-card";
 import { SearchField, Toolbar } from "@/components/data/toolbar";
 import { PageHeader } from "@/components/layout/page-header";
+import { Button } from "@/components/ui/button";
 import { useSuppliers } from "@/lib/supabase/queries";
+import {
+  useCreateSupplier,
+  useDeleteSupplier,
+  useUpdateSupplier,
+} from "@/lib/supabase/mutations";
+import type { DbSupplier } from "@/lib/supabase/types";
 import { formatKes } from "@/lib/format";
+
+const fields: readonly FormField[] = [
+  { key: "name", label: "Supplier name", full: true, placeholder: "e.g. Helmet House Kenya" },
+  { key: "contact_name", label: "Contact person", placeholder: "Full name" },
+  { key: "phone", label: "Phone", placeholder: "+254 7xx xxx xxx" },
+  { key: "email", label: "Email", type: "email", placeholder: "orders@supplier.co.ke" },
+  {
+    key: "terms",
+    label: "Payment terms",
+    type: "select",
+    options: ["Net 15", "Net 30", "Net 45", "Cash on delivery", "Prepaid"].map((term) => ({
+      value: term,
+      label: term,
+    })),
+  },
+  { key: "lead_time_days", label: "Lead time (days)", type: "number" },
+  { key: "rating", label: "Rating (0–5)", type: "number", step: "0.1" },
+  { key: "outstanding", label: "Outstanding (KES)", type: "number", step: "0.01" },
+];
+
+const emptyValues: FormValues = {
+  name: "",
+  contact_name: "",
+  phone: "",
+  email: "",
+  terms: "Net 30",
+  lead_time_days: "0",
+  rating: "",
+  outstanding: "0",
+};
 
 export function SuppliersPage() {
   const suppliersQuery = useSuppliers();
+  const createSupplier = useCreateSupplier();
+  const updateSupplier = useUpdateSupplier();
+  const deleteSupplier = useDeleteSupplier();
+
   const [query, setQuery] = useState("");
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editing, setEditing] = useState<DbSupplier | null>(null);
+  const [values, setValues] = useState<FormValues>(emptyValues);
+  const [deleting, setDeleting] = useState<DbSupplier | null>(null);
 
   const suppliers = suppliersQuery.data ?? [];
 
@@ -28,6 +75,77 @@ export function SuppliersPage() {
     ? suppliers.reduce((sum, supplier) => sum + supplier.lead_time_days, 0) / suppliers.length
     : 0;
 
+  const change = (key: string, value: string) => setValues((current) => ({ ...current, [key]: value }));
+
+  const openCreate = () => {
+    setEditing(null);
+    setValues(emptyValues);
+    setDialogOpen(true);
+  };
+
+  const openEdit = (supplier: DbSupplier) => {
+    setEditing(supplier);
+    setValues({
+      name: supplier.name,
+      contact_name: supplier.contact_name ?? "",
+      phone: supplier.phone ?? "",
+      email: supplier.email ?? "",
+      terms: supplier.terms,
+      lead_time_days: String(supplier.lead_time_days),
+      rating: supplier.rating === null ? "" : String(supplier.rating),
+      outstanding: String(supplier.outstanding),
+    });
+    setDialogOpen(true);
+  };
+
+  const submit = async () => {
+    if (!values["name"]?.trim()) {
+      toast.error("A supplier name is required");
+      return;
+    }
+
+    const payload = {
+      name: values["name"].trim(),
+      contact_name: values["contact_name"]?.trim() || null,
+      phone: values["phone"]?.trim() || null,
+      email: values["email"]?.trim() || null,
+      terms: values["terms"] || "Net 30",
+      lead_time_days: Number(values["lead_time_days"] || 0),
+      rating: values["rating"] ? Number(values["rating"]) : null,
+      outstanding: Number(values["outstanding"] || 0),
+    };
+
+    try {
+      if (editing) {
+        await updateSupplier.mutateAsync({ id: editing.id, ...payload });
+        toast.success("Supplier updated", { description: `${payload.name} saved to Supabase.` });
+      } else {
+        await createSupplier.mutateAsync(payload);
+        toast.success("Supplier added", { description: `${payload.name} saved to Supabase.` });
+      }
+      setDialogOpen(false);
+      setEditing(null);
+      setValues(emptyValues);
+    } catch (error) {
+      toast.error("Could not save the supplier", {
+        description: error instanceof Error ? error.message : "Unexpected error",
+      });
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deleting) return;
+    try {
+      await deleteSupplier.mutateAsync(deleting.id);
+      toast.success("Supplier deleted", { description: `${deleting.name} removed from Supabase.` });
+      setDeleting(null);
+    } catch (error) {
+      toast.error("Could not delete the supplier", {
+        description: error instanceof Error ? error.message : "Unexpected error",
+      });
+    }
+  };
+
   return (
     <>
       <PageHeader
@@ -40,6 +158,12 @@ export function SuppliersPage() {
               Live from Supabase
             </span>
           ) : null
+        }
+        actions={
+          <Button type="button" size="sm" className="h-9 gap-1.5" onClick={openCreate}>
+            <Plus aria-hidden="true" className="size-3.5" />
+            Add supplier
+          </Button>
         }
       />
 
@@ -77,7 +201,12 @@ export function SuppliersPage() {
           <div className="px-4 pb-4 sm:px-5">
             <EmptyState
               title="No suppliers recorded"
-              description="Suppliers added to the pos_suppliers table will be listed here."
+              description="Add a supplier to start tracking contacts, terms and balances."
+              action={
+                <Button type="button" size="sm" className="mt-2 h-8" onClick={openCreate}>
+                  Add supplier
+                </Button>
+              }
             />
           </div>
         ) : (
@@ -86,7 +215,7 @@ export function SuppliersPage() {
             getRowId={(supplier) => supplier.id}
             emptyMessage="No suppliers match this search."
             caption="Supplier directory"
-            minWidth="820px"
+            minWidth="980px"
             columns={[
               {
                 key: "name",
@@ -143,10 +272,55 @@ export function SuppliersPage() {
                   </span>
                 ),
               },
+              {
+                key: "actions",
+                header: "ACTIONS",
+                align: "right",
+                render: (supplier) => (
+                  <span className="flex items-center justify-end gap-1">
+                    <Button type="button" variant="outline" size="sm" className="h-7 gap-1 px-2 text-[10px]" onClick={() => openEdit(supplier)}>
+                      <Pencil aria-hidden="true" className="size-3" />
+                      Edit
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 gap-1 px-2 text-[10px] text-destructive"
+                      onClick={() => setDeleting(supplier)}
+                    >
+                      <Trash2 aria-hidden="true" className="size-3" />
+                      Delete
+                    </Button>
+                  </span>
+                ),
+              },
             ]}
           />
         )}
       </section>
+
+      <FormDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        title={editing ? "Update supplier" : "Add supplier"}
+        description="Saved to the pos_suppliers table in Supabase."
+        fields={fields}
+        values={values}
+        onChange={change}
+        onSubmit={submit}
+        pending={createSupplier.isPending || updateSupplier.isPending}
+        submitLabel={editing ? "Save changes" : "Save supplier"}
+      />
+
+      <ConfirmDialog
+        open={Boolean(deleting)}
+        onOpenChange={(open) => (open ? null : setDeleting(null))}
+        title="Delete supplier?"
+        description={`Remove ${deleting?.name ?? "this supplier"} from the directory? This cannot be undone.`}
+        pending={deleteSupplier.isPending}
+        onConfirm={confirmDelete}
+      />
     </>
   );
 }

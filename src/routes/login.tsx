@@ -1,5 +1,5 @@
 import { Navigate, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { ArrowRight, LockKeyhole, Mail, ShieldCheck, ShoppingCart } from "lucide-react";
+import { ArrowRight, KeyRound, ShieldCheck, ShoppingCart, UserRound } from "lucide-react";
 import { useState } from "react";
 
 import logo from "@/assets/samul-bikers-logo.png";
@@ -23,17 +23,25 @@ export const Route = createFileRoute("/login")({
 function LoginPage() {
   const navigate = useNavigate();
   const { user, isReady, signIn } = useAuth();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [username, setUsername] = useState("");
+  const [pin, setPin] = useState("");
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   if (isReady && user) {
     return <Navigate to={defaultRouteForRole(user.role)} replace />;
   }
 
-  const submit = (event: React.FormEvent) => {
+  const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    const result = signIn(email, password);
+    if (!/^\d{4}$/.test(pin)) {
+      setError("Enter your 4-digit PIN.");
+      return;
+    }
+
+    setSubmitting(true);
+    const result = await signIn(username, pin);
+    setSubmitting(false);
     if (!result.ok) {
       setError(result.error);
       return;
@@ -43,9 +51,9 @@ function LoginPage() {
     void navigate({ to: defaultRouteForRole(result.user.role), replace: true });
   };
 
-  const useDemo = (demo: (typeof demoAccounts)[number]) => {
-    setEmail(demo.email);
-    setPassword(demo.password);
+  const applyDemo = (demo: (typeof demoAccounts)[number]) => {
+    setUsername(demo.username);
+    setPin(demo.pin);
     setError("");
   };
 
@@ -93,23 +101,25 @@ function LoginPage() {
 
           <h2 className="font-display text-[24px] font-semibold leading-tight text-foreground">Sign in</h2>
           <p className="mt-1 text-[12px] text-muted-foreground">
-            Use your store account. Cashiers added by a manager sign in with the email and password they were given.
+            Enter the username and 4-digit PIN issued by your store administrator.
           </p>
 
           <form onSubmit={submit} className="mt-6 space-y-4">
             <div className="space-y-1.5">
-              <Label htmlFor="login-email" className="text-[11px]">
-                Email
+              <Label htmlFor="login-username" className="text-[11px]">
+                Username
               </Label>
               <div className="relative">
-                <Mail aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                <UserRound aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                  id="login-email"
-                  type="email"
+                  id="login-username"
+                  type="text"
                   autoComplete="username"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  placeholder="you@samulbikers.co.ke"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value)}
+                  placeholder="e.g. miriam"
                   className="h-10 pl-9 text-[12px]"
                   required
                 />
@@ -117,19 +127,21 @@ function LoginPage() {
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="login-password" className="text-[11px]">
-                Password
+              <Label htmlFor="login-pin" className="text-[11px]">
+                4-digit PIN
               </Label>
               <div className="relative">
-                <LockKeyhole aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                <KeyRound aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                  id="login-password"
+                  id="login-pin"
                   type="password"
+                  inputMode="numeric"
                   autoComplete="current-password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  placeholder="Your password"
-                  className="h-10 pl-9 text-[12px]"
+                  maxLength={4}
+                  value={pin}
+                  onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 4))}
+                  placeholder="••••"
+                  className="h-10 pl-9 text-[14px] tracking-[0.4em]"
                   required
                 />
               </div>
@@ -141,8 +153,8 @@ function LoginPage() {
               </p>
             )}
 
-            <Button type="submit" className="h-10 w-full gap-2 text-[12px]">
-              Sign in
+            <Button type="submit" disabled={submitting} className="h-10 w-full gap-2 text-[12px]">
+              {submitting ? "Signing in..." : "Sign in"}
               <ArrowRight aria-hidden="true" className="size-4" />
             </Button>
           </form>
@@ -154,10 +166,10 @@ function LoginPage() {
             <div className="mt-3 grid grid-cols-2 gap-2">
               {demoAccounts.map((demo) => (
                 <Button
-                  key={demo.email}
+                  key={demo.username}
                   type="button"
                   variant="outline"
-                  onClick={() => useDemo(demo)}
+                  onClick={() => applyDemo(demo)}
                   className="h-9 text-[11px]"
                 >
                   {demo.label}
@@ -165,7 +177,8 @@ function LoginPage() {
               ))}
             </div>
             <p className="mt-3 text-[10px] leading-relaxed text-muted-foreground">
-              Credentials are stored in this browser for the preview. Choose a demo role, then sign in.
+              Demo PINs: manager {demoAccounts[0].pin} · cashier {demoAccounts[1].pin}. Credentials are stored in
+              this browser for the preview.
             </p>
           </div>
         </div>
