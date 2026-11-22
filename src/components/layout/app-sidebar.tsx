@@ -6,6 +6,7 @@ import { navigationForRole } from "@/components/layout/nav";
 import { InstallAppButton } from "@/components/pwa/install-app-button";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth/auth-context";
+import { useProducts } from "@/lib/supabase/queries";
 
 function isActivePath(pathname: string, to: string) {
   if (to === "/") return pathname === "/";
@@ -22,6 +23,9 @@ export function SidebarContents({
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const { user } = useAuth();
   const groups = navigationForRole(user?.role);
+  const lowStockCount = (useProducts().data ?? []).filter(
+    (product) => product.stock <= product.reorderLevel,
+  ).length;
 
   return (
     <>
@@ -55,6 +59,8 @@ export function SidebarContents({
             <ul className="space-y-1">
               {group.items.map(({ label, to, icon: Icon, badge }) => {
                 const active = isActivePath(pathname, to);
+                const itemBadge =
+                  to === "/inventory" ? (lowStockCount ? String(lowStockCount) : undefined) : badge;
 
                 return (
                   <li key={to}>
@@ -81,9 +87,9 @@ export function SidebarContents({
                         {!collapsed && (
                           <span className="min-w-0 flex-1 truncate text-left">{label}</span>
                         )}
-                        {!collapsed && badge && (
+                        {!collapsed && itemBadge && (
                           <span className="flex size-[21px] items-center justify-center rounded-[5px] bg-amber/15 text-[10px] font-semibold text-amber">
-                            {badge}
+                            {itemBadge}
                           </span>
                         )}
                       </Link>
@@ -113,7 +119,10 @@ export function SidebarContents({
               </span>
               <span className="mt-0.5 block text-[10px] text-sidebar-muted">Nairobi · Kenya</span>
             </span>
-            <Check aria-label="Business location" className="ml-auto size-3.5 shrink-0 text-sidebar-primary" />
+            <Check
+              aria-label="Business location"
+              className="ml-auto size-3.5 shrink-0 text-sidebar-primary"
+            />
           </div>
           <p className="mt-4 border-t border-sidebar-border pt-3 text-[10px] text-sidebar-muted">
             Business Technology. Simplified.
@@ -140,7 +149,10 @@ export function SidebarCollapseButton({
       title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
       className="h-[46px] shrink-0 justify-start gap-3 rounded-none border-t border-sidebar-border px-6 text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-foreground"
     >
-      <ArrowDown aria-hidden="true" className={`size-4 ${collapsed ? "rotate-90" : "-rotate-90"}`} />
+      <ArrowDown
+        aria-hidden="true"
+        className={`size-4 ${collapsed ? "rotate-90" : "-rotate-90"}`}
+      />
       {!collapsed && <span className="text-[11px]">Collapse sidebar</span>}
     </Button>
   );

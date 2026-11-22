@@ -1,8 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { sampleBranches, type Branch } from "@/data/sample/people";
 import { requireSupabase } from "@/lib/supabase/client";
 import type { DbBranch } from "@/lib/supabase/types";
+
+export type Branch = {
+  id: string;
+  name: string;
+  city: string;
+  address: string;
+  manager: string;
+  phone: string;
+  staff: number;
+  monthlyRevenue: number;
+  stockValue: number;
+  status: "Open" | "Closing soon" | "Closed";
+};
 
 export type BranchInput = {
   name: string;
@@ -45,12 +57,10 @@ export function useBranches(): Branch[] {
     },
   });
 
-  return query.data ?? sampleBranches;
+  return query.data ?? [];
 }
 
-function useBranchMutation<TInput, TResult>(
-  mutationFn: (input: TInput) => Promise<TResult>,
-) {
+function useBranchMutation<TInput, TResult>(mutationFn: (input: TInput) => Promise<TResult>) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn,

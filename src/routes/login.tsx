@@ -7,7 +7,6 @@ import { InstallAppButton } from "@/components/pwa/install-app-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { demoAccounts } from "@/lib/auth/accounts";
 import { useAuth } from "@/lib/auth/auth-context";
 import { defaultRouteForRole } from "@/lib/auth/roles";
 
@@ -52,19 +51,15 @@ function LoginPage() {
     void navigate({ to: defaultRouteForRole(result.user.role), replace: true });
   };
 
-  const applyDemo = (demo: (typeof demoAccounts)[number]) => {
-    setUsername(demo.username);
-    setPin(demo.pin);
-    setError("");
-  };
-
   return (
     <main className="grid min-h-screen bg-background lg:grid-cols-[minmax(0,1fr)_minmax(420px,0.85fr)]">
       <section className="hidden flex-col justify-between bg-sidebar p-10 text-sidebar-foreground lg:flex">
         <div className="flex items-center gap-3">
           <img src={logo} alt="Samul Bikers logo" className="size-10 object-contain" />
           <span className="leading-tight">
-            <span className="block font-display text-sm font-semibold tracking-wide">SAMUL BIKERS</span>
+            <span className="block font-display text-sm font-semibold tracking-wide">
+              SAMUL BIKERS
+            </span>
             <span className="mt-1 block text-[10px] text-sidebar-muted">BUSINESS MANAGEMENT</span>
           </span>
         </div>
@@ -76,7 +71,8 @@ function LoginPage() {
             The right access for every role.
           </h1>
           <p className="mt-4 text-[13px] leading-relaxed text-sidebar-muted">
-            Store managers run the shop. Cashiers get the point of sale and their own shift summary — nothing else.
+            Store managers run the shop. Cashiers get the point of sale and their own shift summary
+            — nothing else.
           </p>
           <ul className="mt-8 space-y-3 text-[12px] text-sidebar-muted">
             <li className="flex items-center gap-2">
@@ -97,10 +93,14 @@ function LoginPage() {
         <div className="w-full max-w-[390px]">
           <div className="mb-8 flex items-center gap-3 lg:hidden">
             <img src={logo} alt="Samul Bikers logo" className="size-10 object-contain" />
-            <span className="font-display text-sm font-semibold tracking-wide text-foreground">SAMUL BIKERS</span>
+            <span className="font-display text-sm font-semibold tracking-wide text-foreground">
+              SAMUL BIKERS
+            </span>
           </div>
 
-          <h2 className="font-display text-[24px] font-semibold leading-tight text-foreground">Sign in</h2>
+          <h2 className="font-display text-[24px] font-semibold leading-tight text-foreground">
+            Sign in
+          </h2>
           <p className="mt-1 text-[12px] text-muted-foreground">
             Enter the username and 4-digit PIN issued by your store administrator.
           </p>
@@ -111,7 +111,10 @@ function LoginPage() {
                 Username
               </Label>
               <div className="relative">
-                <UserRound aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                <UserRound
+                  aria-hidden="true"
+                  className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+                />
                 <Input
                   id="login-username"
                   type="text"
@@ -120,7 +123,7 @@ function LoginPage() {
                   spellCheck={false}
                   value={username}
                   onChange={(event) => setUsername(event.target.value)}
-                  placeholder="e.g. miriam"
+                  placeholder="Enter your username"
                   className="h-10 pl-9 text-[12px]"
                   required
                 />
@@ -132,7 +135,10 @@ function LoginPage() {
                 4-digit PIN
               </Label>
               <div className="relative">
-                <KeyRound aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                <KeyRound
+                  aria-hidden="true"
+                  className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+                />
                 <Input
                   id="login-pin"
                   type="password"
@@ -149,7 +155,10 @@ function LoginPage() {
             </div>
 
             {error && (
-              <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[11px] text-destructive">
+              <p
+                role="alert"
+                className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[11px] text-destructive"
+              >
                 {error}
               </p>
             )}
@@ -167,28 +176,9 @@ function LoginPage() {
             label="Install Samul Bikers on this device"
           />
 
-          <div className="mt-7 rounded-lg border border-border bg-card p-4">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Preview accounts
-            </p>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              {demoAccounts.map((demo) => (
-                <Button
-                  key={demo.username}
-                  type="button"
-                  variant="outline"
-                  onClick={() => applyDemo(demo)}
-                  className="h-9 text-[11px]"
-                >
-                  {demo.label}
-                </Button>
-              ))}
-            </div>
-            <p className="mt-3 text-[10px] leading-relaxed text-muted-foreground">
-              Demo PINs: manager {demoAccounts[0].pin} · cashier {demoAccounts[1].pin}. Credentials are stored in
-              this browser for the preview.
-            </p>
-          </div>
+          <p className="mt-7 text-center text-[10px] leading-relaxed text-muted-foreground">
+            Accounts are issued by your branch manager and verified against the live staff database.
+          </p>
         </div>
       </section>
     </main>

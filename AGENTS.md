@@ -14,6 +14,6 @@
 
 ## Application guidance
 
-- Keep dashboard examples in their own presentation modules and clearly label sample figures as previews; this prevents mock records from being mistaken for live transactions.
+- Dashboard, POS and report figures must come from Supabase queries. Do not hard-code sample business data or label live screens as previews.
 - Money is Kenyan shillings (KES). Receipts and Z reports must show subtotal, discounts, VAT and total separately.
 - Products, categories, customers, suppliers, purchases, expenses, inventory, branches and staff accounts are Supabase-backed. Do not add new local-storage stores for business data.

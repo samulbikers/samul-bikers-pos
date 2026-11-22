@@ -58,11 +58,10 @@ PayHero settings default to the shop’s Lipwa link and channel ID and can be ov
 
 ## Sign-in
 
-Staff sign in with a username and 4-digit PIN. Demo accounts:
+Staff sign in with a username and 4-digit PIN. Accounts are verified against the Supabase `pos_staff_accounts` table through the `pos_staff_login` RPC.
 
 | Role | Username | PIN |
 | --- | --- | --- |
-| Owner | `samson` | `1234` |
-| Store manager | `miriam` | `2468` |
-| Cashier | `lucy` | `1234` |
-| Cashier | `esther` | `4321` |
+| Branch Manager | `Samul2019` | `2019` |
+
+Create, edit, reset or remove cashier and manager logins from **Staff & users**. PINs are hashed in the database and never returned to the browser.

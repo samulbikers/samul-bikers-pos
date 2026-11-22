@@ -17,7 +17,9 @@ function useActiveNavItem(role: AppRole | undefined) {
 
   return (
     sorted.find((item) =>
-      item.to === "/" ? pathname === "/" : pathname === item.to || pathname.startsWith(`${item.to}/`),
+      item.to === "/"
+        ? pathname === "/"
+        : pathname === item.to || pathname.startsWith(`${item.to}/`),
     ) ?? items[0]!
   );
 }
@@ -42,7 +44,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <div id="app" className="dashboard-shell flex min-h-screen w-full bg-background text-foreground">
+    <div
+      id="app"
+      className="dashboard-shell flex min-h-screen w-full bg-background text-foreground"
+    >
       <aside
         className={`dashboard-sidebar sticky top-0 hidden h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200 lg:flex ${
           collapsed ? "w-[72px]" : "w-[238px]"
@@ -56,9 +61,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <AppTopbar
           title={isCashierDashboard ? "My shift" : active.label}
           description={
-            isCashierDashboard
-              ? "Your sales today and a shortcut to the till"
-              : active.description
+            isCashierDashboard ? "Your sales today and a shortcut to the till" : active.description
           }
         />
 
@@ -68,7 +71,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <span>Samul Bikers POS · Business Technology. Simplified.</span>
             <span className="inline-flex items-center gap-1.5">
               <ShieldCheck aria-hidden="true" className="size-3.5" />
-              Illustrative figures only · Preview workspace
+              Live business data · Samul Bikers
             </span>
           </footer>
         </main>

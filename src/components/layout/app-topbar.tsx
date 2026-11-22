@@ -1,4 +1,4 @@
-import { Activity, Bell, Boxes, ChevronDown, LogOut, Menu, Moon, Sun, UserRound } from "lucide-react";
+import { Activity, Bell, Boxes, ChevronDown, LogOut, Menu, Moon, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 
@@ -26,6 +26,7 @@ import { useTheme } from "@/hooks/use-theme";
 import { useAuth } from "@/lib/auth/auth-context";
 import { canUseGlobalSearch, roleLabels } from "@/lib/auth/roles";
 import { formatNairobiDate, initialsOf } from "@/lib/format";
+import { useProducts } from "@/lib/supabase/queries";
 
 export function AppTopbar({ title, description }: { title: string; description: string }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -33,6 +34,8 @@ export function AppTopbar({ title, description }: { title: string; description: 
   const { theme, toggleTheme } = useTheme();
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+  const products = useProducts().data ?? [];
+  const lowStock = products.filter((product) => product.stock <= product.reorderLevel).slice(0, 5);
 
   const handleSignOut = () => {
     signOut();
@@ -75,15 +78,12 @@ export function AppTopbar({ title, description }: { title: string; description: 
         </Sheet>
 
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <h1 className="truncate font-display text-[16px] font-semibold text-foreground sm:text-[17px]">
-              {title}
-            </h1>
-            <span className="hidden h-5 items-center rounded border border-border px-1.5 text-[9px] font-medium text-muted-foreground sm:inline-flex">
-              Preview
-            </span>
-          </div>
-          <p className="hidden truncate text-[10px] text-muted-foreground sm:block">{description}</p>
+          <h1 className="truncate font-display text-[16px] font-semibold text-foreground sm:text-[17px]">
+            {title}
+          </h1>
+          <p className="hidden truncate text-[10px] text-muted-foreground sm:block">
+            {description}
+          </p>
         </div>
       </div>
 
@@ -119,43 +119,51 @@ export function AppTopbar({ title, description }: { title: string; description: 
               type="button"
               variant="ghost"
               size="icon"
-              title="Preview notifications"
-              aria-label="Preview notifications"
+              title="Notifications"
+              aria-label="Notifications"
               className="relative size-9 shrink-0 text-muted-foreground"
             >
               <Bell className="size-4" />
-              <span aria-hidden="true" className="absolute right-[7px] top-[7px] size-[7px] rounded-full border-[1.5px] border-background bg-amber" />
+              {lowStock.length > 0 && (
+                <span
+                  aria-hidden="true"
+                  className="absolute right-[7px] top-[7px] size-[7px] rounded-full border-[1.5px] border-background bg-amber"
+                />
+              )}
             </Button>
           </SheetTrigger>
           <SheetContent side="right" className="w-[min(370px,92vw)] sm:w-[390px]">
             <SheetHeader>
               <SheetTitle>Notifications</SheetTitle>
-              <SheetDescription>Preview alerts · Sample data</SheetDescription>
+              <SheetDescription>
+                {lowStock.length
+                  ? "Products at or below their reorder level"
+                  : "No stock alerts right now"}
+              </SheetDescription>
             </SheetHeader>
-            <ul className="mt-6 divide-y divide-border">
-              <li className="flex gap-3 py-4">
-                <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-amber/10 text-amber">
-                  <Boxes aria-hidden="true" className="size-4" />
-                </span>
-                <span>
-                  <span className="block text-[12px] font-medium text-foreground">3 products need attention</span>
-                  <span className="mt-1 block text-[11px] text-muted-foreground">
-                    Check availability before placing an order.
-                  </span>
-                </span>
-              </li>
-              <li className="flex gap-3 py-4">
-                <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-secondary text-primary">
-                  <Activity aria-hidden="true" className="size-4" />
-                </span>
-                <span>
-                  <span className="block text-[12px] font-medium text-foreground">Sample trading activity ready</span>
-                  <span className="mt-1 block text-[11px] text-muted-foreground">
-                    Illustrative only — no real transactions recorded.
-                  </span>
-                </span>
-              </li>
-            </ul>
+            {lowStock.length ? (
+              <ul className="mt-6 divide-y divide-border">
+                {lowStock.map((product) => (
+                  <li key={product.id} className="flex gap-3 py-4">
+                    <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-amber/10 text-amber">
+                      <Boxes aria-hidden="true" className="size-4" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block truncate text-[12px] font-medium text-foreground">
+                        {product.title}
+                      </span>
+                      <span className="mt-1 block text-[11px] text-muted-foreground">
+                        {product.stock} in stock · reorder at {product.reorderLevel}
+                      </span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-6 rounded-md border border-dashed border-border px-4 py-8 text-center text-[11px] text-muted-foreground">
+                Every product is above its reorder level.
+              </p>
+            )}
           </SheetContent>
         </Sheet>
 
@@ -177,10 +185,13 @@ export function AppTopbar({ title, description }: { title: string; description: 
                   {user?.name ?? "Signed out"}
                 </span>
                 <span className="mt-0.5 block text-[9px] text-muted-foreground">
-                  {user ? roleLabels[user.role] : "Preview workspace"}
+                  {user ? roleLabels[user.role] : "Not signed in"}
                 </span>
               </span>
-              <ChevronDown aria-hidden="true" className="hidden size-3 text-muted-foreground sm:block" />
+              <ChevronDown
+                aria-hidden="true"
+                className="hidden size-3 text-muted-foreground sm:block"
+              />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
@@ -192,13 +203,12 @@ export function AppTopbar({ title, description }: { title: string; description: 
               </span>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
-              <UserRound aria-hidden="true" className="mr-2 size-4" />
-              Profile
-              <span className="ml-auto rounded bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground">Preview</span>
-            </DropdownMenuItem>
             <DropdownMenuItem onSelect={toggleTheme}>
-              {theme === "dark" ? <Sun aria-hidden="true" className="mr-2 size-4" /> : <Moon aria-hidden="true" className="mr-2 size-4" />}
+              {theme === "dark" ? (
+                <Sun aria-hidden="true" className="mr-2 size-4" />
+              ) : (
+                <Moon aria-hidden="true" className="mr-2 size-4" />
+              )}
               {theme === "dark" ? "Light theme" : "Dark theme"}
             </DropdownMenuItem>
             <DropdownMenuSeparator />

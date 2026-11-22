@@ -1,12 +1,26 @@
 import { Link } from "@tanstack/react-router";
-import { BadgeCheck, Clock3, Download, KeyRound, Pencil, Plus, ShieldCheck, Trash2, Users, Wallet } from "lucide-react";
+import {
+  BadgeCheck,
+  Download,
+  KeyRound,
+  Pencil,
+  Plus,
+  ShieldCheck,
+  Store,
+  Trash2,
+  Users,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import { ConfirmDialog, FormDialog, type FormField, type FormValues } from "@/components/data/form-dialog";
+import {
+  ConfirmDialog,
+  FormDialog,
+  type FormField,
+  type FormValues,
+} from "@/components/data/form-dialog";
 import { DataTable } from "@/components/data/data-table";
 import { StatCard } from "@/components/data/stat-card";
-import { StatusBadge } from "@/components/data/status-badge";
 import { FilterSelect, SearchField, Toolbar } from "@/components/data/toolbar";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
@@ -20,18 +34,24 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { sampleStaff, type StaffMember } from "@/data/sample/people";
 import { useAuth } from "@/lib/auth/auth-context";
 import { canManageCashiers } from "@/lib/auth/roles";
 import { useBranches } from "@/lib/branches/branch-store";
-import { formatKes, initialsOf } from "@/lib/format";
+import { initialsOf } from "@/lib/format";
 
-const roleOptions = ["All roles", "Owner", "Manager", "Cashier", "Storekeeper", "Technician"] as const;
+const roleOptions = ["All roles", "Owner", "Manager", "Cashier"] as const;
 
-type TeamRow = StaffMember & {
-  accountId?: string | undefined;
-  username?: string | undefined;
+type TeamRow = {
+  id: string;
+  name: string;
+  username: string;
+  role: "Owner" | "Manager" | "Cashier";
+  branchId: string | null;
+  shift: string;
+  accountId: string;
 };
+
+const roleLabel = { owner: "Owner", manager: "Manager", cashier: "Cashier" } as const;
 
 const emptyValues: FormValues = {
   name: "",
@@ -54,52 +74,45 @@ export function StaffPage() {
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [deletingPending, setDeletingPending] = useState(false);
-  const { user, accounts, addStaff, updateStaff, deleteStaff, resetPin: resetAccountPin } = useAuth();
+  const {
+    user,
+    accounts,
+    addStaff,
+    updateStaff,
+    deleteStaff,
+    resetPin: resetAccountPin,
+  } = useAuth();
   const branches = useBranches();
 
-  const team = useMemo<TeamRow[]>(() => {
-    const accountsByName = new Map(accounts.map((account) => [account.name.toLowerCase(), account]));
-    const sampleRows = sampleStaff.map<TeamRow>((member) => {
-      const account = accountsByName.get(member.name.toLowerCase());
-      return {
-        ...member,
-        accountId: account?.id,
-        username: account?.username,
-      };
-    });
-
-    const knownNames = new Set(sampleStaff.map((member) => member.name.toLowerCase()));
-    const added = accounts
-      .filter((account) => account.source === "manager" && !knownNames.has(account.name.toLowerCase()))
-      .map<TeamRow>((account) => ({
+  const team = useMemo<TeamRow[]>(
+    () =>
+      accounts.map((account) => ({
         id: account.id,
         name: account.name,
-        role: account.role === "manager" ? "Manager" : "Cashier",
-        branchId: account.branchId ?? branches[0]?.id ?? "br-01",
-        status: "Active",
-        shift: account.shift ?? "09:00 – 18:00",
-        salesThisMonth: 0,
-        email: account.username,
-        accountId: account.id,
         username: account.username,
-      }));
-
-    return [...added, ...sampleRows];
-  }, [accounts, branches]);
+        role: roleLabel[account.role],
+        branchId: account.branchId ?? null,
+        shift: account.shift ?? "09:00 – 18:00",
+        accountId: account.id,
+      })),
+    [accounts],
+  );
 
   const rows = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return team.filter((member) => {
-      const matchesQuery = !needle || `${member.name} ${member.username ?? ""}`.toLowerCase().includes(needle);
+      const matchesQuery =
+        !needle || `${member.name} ${member.username}`.toLowerCase().includes(needle);
       const matchesRole = role === roleOptions[0] || member.role === role;
       return matchesQuery && matchesRole;
     });
   }, [team, query, role]);
 
-  const salesThisMonth = team.reduce((sum, member) => sum + member.salesThisMonth, 0);
-  const active = team.filter((member) => member.status === "Active").length;
-  const onLeave = team.filter((member) => member.status === "On leave").length;
-  const branchName = (id: string) => branches.find((branch) => branch.id === id)?.name ?? "—";
+  const managers = team.filter((member) => member.role === "Manager").length;
+  const cashiers = team.filter((member) => member.role === "Cashier").length;
+  const branchesCovered = new Set(team.map((member) => member.branchId).filter(Boolean)).size;
+  const branchName = (id: string | null) =>
+    branches.find((branch) => branch.id === id)?.name ?? "—";
 
   const fields = useMemo<readonly FormField[]>(
     () => [
@@ -131,7 +144,12 @@ export function StaffPage() {
   const change = (key: string, value: string) =>
     setValues((current) => ({
       ...current,
-      [key]: key === "username" ? value.toLowerCase().replace(/\s/g, "") : key === "pin" ? value.replace(/\D/g, "").slice(0, 4) : value,
+      [key]:
+        key === "username"
+          ? value.toLowerCase().replace(/\s/g, "")
+          : key === "pin"
+            ? value.replace(/\D/g, "").slice(0, 4)
+            : value,
     }));
 
   const openCreate = () => {
@@ -141,7 +159,6 @@ export function StaffPage() {
   };
 
   const openEdit = (member: TeamRow) => {
-    if (!member.accountId) return;
     const account = accounts.find((entry) => entry.id === member.accountId);
     if (!account || account.role === "owner") return;
 
@@ -172,7 +189,9 @@ export function StaffPage() {
           toast.error(result.error);
           return;
         }
-        toast.success("Account updated", { description: `${result.account.name} saved to Supabase.` });
+        toast.success("Account updated", {
+          description: `${result.account.name} saved to Supabase.`,
+        });
       } else {
         const result = await addStaff({
           name: values["name"] ?? "",
@@ -186,9 +205,12 @@ export function StaffPage() {
           toast.error(result.error);
           return;
         }
-        toast.success(result.account.role === "manager" ? "Branch manager added" : "Cashier added", {
-          description: `${result.account.name} can sign in with username ${result.account.username} and their 4-digit PIN.`,
-        });
+        toast.success(
+          result.account.role === "manager" ? "Branch manager added" : "Cashier added",
+          {
+            description: `${result.account.name} can sign in with username ${result.account.username} and their 4-digit PIN.`,
+          },
+        );
       }
 
       setDialogOpen(false);
@@ -209,7 +231,9 @@ export function StaffPage() {
         return;
       }
 
-      toast.success("PIN reset", { description: `${result.account.name} can sign in with the new PIN.` });
+      toast.success("PIN reset", {
+        description: `${result.account.name} can sign in with the new PIN.`,
+      });
       setResetTarget(null);
       setResetPin("");
     } finally {
@@ -258,21 +282,61 @@ export function StaffPage() {
         }
       />
 
-      <section aria-label="Staff summary" className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 xl:gap-[14px]">
-        <StatCard icon={Users} title="Team size" value={String(team.length)} note="accounts in Supabase" color="var(--chart-1)" />
-        <StatCard icon={BadgeCheck} title="Active today" value={String(active)} note="clocked in or scheduled" color="var(--chart-2)" />
-        <StatCard icon={Wallet} title="Staff sales" value={formatKes(salesThisMonth)} note="attributed this month" color="var(--chart-3)" />
-        <StatCard icon={Clock3} title="On leave" value={String(onLeave)} note="returning this week" color="var(--chart-4)" />
+      <section
+        aria-label="Staff summary"
+        className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 xl:gap-[14px]"
+      >
+        <StatCard
+          icon={Users}
+          title="Team size"
+          value={String(team.length)}
+          note="sign-in accounts"
+          color="var(--chart-1)"
+        />
+        <StatCard
+          icon={BadgeCheck}
+          title="Branch managers"
+          value={String(managers)}
+          note="can manage staff"
+          color="var(--chart-2)"
+        />
+        <StatCard
+          icon={KeyRound}
+          title="Cashiers"
+          value={String(cashiers)}
+          note="till access only"
+          color="var(--chart-3)"
+        />
+        <StatCard
+          icon={Store}
+          title="Branches covered"
+          value={String(branchesCovered)}
+          note="with an active login"
+          color="var(--chart-4)"
+        />
       </section>
 
       <section className="min-w-0 overflow-hidden rounded-lg border border-border bg-card shadow-[0_1px_2px_var(--card-shadow)]">
         <div className="px-4 pb-2 pt-4 sm:px-5">
           <h3 className="text-[14px] font-semibold text-card-foreground">Team directory</h3>
-          <p className="mt-1 text-[11px] text-muted-foreground">Roles control what each person can reach in the live app.</p>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Roles control what each person can reach in the live app.
+          </p>
         </div>
         <Toolbar>
-          <SearchField value={query} onChange={setQuery} label="Search team" placeholder="Search name or username" className="w-full sm:w-64" />
-          <FilterSelect label="Filter by role" value={role} onChange={setRole} options={roleOptions} />
+          <SearchField
+            value={query}
+            onChange={setQuery}
+            label="Search team"
+            placeholder="Search name or username"
+            className="w-full sm:w-64"
+          />
+          <FilterSelect
+            label="Filter by role"
+            value={role}
+            onChange={setRole}
+            options={roleOptions}
+          />
           <span className="ml-auto inline-flex items-center gap-1 text-[10px] text-muted-foreground">
             <ShieldCheck aria-hidden="true" className="size-3" />
             {rows.length} accounts
@@ -283,7 +347,7 @@ export function StaffPage() {
           getRowId={(member) => member.id}
           emptyMessage="No team members match these filters."
           caption="Staff directory"
-          minWidth="1080px"
+          minWidth="860px"
           columns={[
             {
               key: "name",
@@ -296,33 +360,39 @@ export function StaffPage() {
                   <span className="min-w-0">
                     <span className="block max-w-[170px] truncate font-medium">{member.name}</span>
                     <span className="block text-[10px] text-muted-foreground">
-                      {member.username ? `@${member.username}` : member.email}
+                      @{member.username}
                     </span>
                   </span>
                 </span>
               ),
             },
-            { key: "role", header: "ROLE", render: (member) => <span className="whitespace-nowrap rounded-[5px] bg-muted px-2 py-1 text-[10px] font-medium text-muted-foreground">{member.role}</span> },
+            {
+              key: "role",
+              header: "ROLE",
+              render: (member) => (
+                <span className="whitespace-nowrap rounded-[5px] bg-muted px-2 py-1 text-[10px] font-medium text-muted-foreground">
+                  {member.role}
+                </span>
+              ),
+            },
             {
               key: "branch",
               header: "BRANCH",
               render: (member) => (
-                <span className="whitespace-nowrap text-[10px] text-muted-foreground">{branchName(member.branchId)}</span>
+                <span className="whitespace-nowrap text-[10px] text-muted-foreground">
+                  {branchName(member.branchId)}
+                </span>
               ),
             },
-            { key: "shift", header: "SHIFT", render: (member) => <span className="whitespace-nowrap text-[10px] text-muted-foreground">{member.shift}</span> },
             {
-              key: "sales",
-              header: "SALES",
-              align: "right",
-              render: (member) =>
-                member.salesThisMonth ? (
-                  <span className="whitespace-nowrap font-semibold">{formatKes(member.salesThisMonth)}</span>
-                ) : (
-                  <span className="text-[10px] text-muted-foreground">—</span>
-                ),
+              key: "shift",
+              header: "SHIFT",
+              render: (member) => (
+                <span className="whitespace-nowrap text-[10px] text-muted-foreground">
+                  {member.shift}
+                </span>
+              ),
             },
-            { key: "status", header: "STATUS", align: "right", render: (member) => <StatusBadge status={member.status} /> },
             {
               key: "actions",
               header: "ACTIONS",
@@ -331,14 +401,18 @@ export function StaffPage() {
                 user && canManageCashiers(user.role) ? (
                   <span className="flex items-center justify-end gap-1">
                     {member.role === "Cashier" ? (
-                      <Button asChild variant="ghost" size="sm" className="h-7 gap-1 px-2 text-[10px] font-medium text-primary">
+                      <Button
+                        asChild
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 gap-1 px-2 text-[10px] font-medium text-primary"
+                      >
                         <Link to="/z-report" search={{ cashier: member.name }}>
-                          <Download aria-hidden="true" className="size-3" />
-                          Z report
+                          <Download aria-hidden="true" className="size-3" />Z report
                         </Link>
                       </Button>
                     ) : null}
-                    {member.accountId && member.role !== "Owner" ? (
+                    {member.role !== "Owner" ? (
                       <>
                         <Button
                           type="button"
@@ -356,7 +430,7 @@ export function StaffPage() {
                           size="sm"
                           className="h-7 gap-1 px-2 text-[10px]"
                           onClick={() => {
-                            setResetTarget({ id: member.accountId!, name: member.name });
+                            setResetTarget({ id: member.accountId, name: member.name });
                             setResetPin("");
                           }}
                         >
@@ -368,7 +442,7 @@ export function StaffPage() {
                           variant="ghost"
                           size="sm"
                           className="h-7 gap-1 px-2 text-[10px] text-destructive"
-                          onClick={() => setDeleting({ id: member.accountId!, name: member.name })}
+                          onClick={() => setDeleting({ id: member.accountId, name: member.name })}
                         >
                           <Trash2 aria-hidden="true" className="size-3" />
                           Delete
@@ -383,7 +457,8 @@ export function StaffPage() {
           ]}
         />
         <div className="border-t border-border px-5 py-[11px] text-[10px] text-muted-foreground">
-          Cashiers and managers sign in with their username and 4-digit PIN. Accounts and hashed PINs are stored in Supabase.
+          Cashiers and managers sign in with their username and 4-digit PIN. Accounts and hashed
+          PINs are stored in Supabase.
         </div>
       </section>
 
@@ -400,7 +475,10 @@ export function StaffPage() {
         submitLabel={editingId ? "Save changes" : "Create account"}
       />
 
-      <Dialog open={Boolean(resetTarget)} onOpenChange={(next) => (next ? null : setResetTarget(null))}>
+      <Dialog
+        open={Boolean(resetTarget)}
+        onOpenChange={(next) => (next ? null : setResetTarget(null))}
+      >
         <DialogContent className="max-w-[380px]">
           <DialogHeader>
             <DialogTitle className="text-[15px]">Reset PIN</DialogTitle>
@@ -425,7 +503,12 @@ export function StaffPage() {
             />
           </div>
           <DialogFooter className="gap-2">
-            <Button type="button" variant="outline" onClick={() => setResetTarget(null)} className="h-9">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setResetTarget(null)}
+              className="h-9"
+            >
               Cancel
             </Button>
             <Button type="button" onClick={submitPinReset} disabled={resetting} className="h-9">

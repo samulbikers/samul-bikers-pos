@@ -40,17 +40,10 @@ export type UpdateStaffInput = {
 
 export type NewCashierInput = Omit<NewStaffInput, "role">;
 
-export type AccountResult =
-  | { ok: true; account: AuthAccount }
-  | { ok: false; error: string };
+export type AccountResult = { ok: true; account: AuthAccount } | { ok: false; error: string };
 
 const SESSION_KEY = "samul-pos-session";
 const roles: AppRole[] = ["owner", "manager", "cashier"];
-
-export const demoAccounts = [
-  { label: "Store manager", username: "miriam", pin: "2468" },
-  { label: "Cashier", username: "lucy", pin: "1234" },
-] as const;
 
 function hasStorage() {
   return typeof window !== "undefined" && typeof window.localStorage !== "undefined";

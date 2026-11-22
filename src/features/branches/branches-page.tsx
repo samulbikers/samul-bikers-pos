@@ -3,7 +3,12 @@ import { Building2, MapPin, Pencil, Phone, Plus, Store, Trash2, Users, Wallet } 
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { ConfirmDialog, FormDialog, type FormField, type FormValues } from "@/components/data/form-dialog";
+import {
+  ConfirmDialog,
+  FormDialog,
+  type FormField,
+  type FormValues,
+} from "@/components/data/form-dialog";
 import { StatCard } from "@/components/data/stat-card";
 import { StatusBadge } from "@/components/data/status-badge";
 import { PageHeader } from "@/components/layout/page-header";
@@ -15,8 +20,8 @@ import {
   useCreateBranch,
   useDeleteBranch,
   useUpdateBranch,
+  type Branch,
 } from "@/lib/branches/branch-store";
-import type { Branch } from "@/data/sample/people";
 import { formatKes } from "@/lib/format";
 
 const fields: readonly FormField[] = [
@@ -24,7 +29,12 @@ const fields: readonly FormField[] = [
   { key: "city", label: "Town / city", placeholder: "Nairobi" },
   { key: "phone", label: "Phone", placeholder: "+254 7xx xxx xxx" },
   { key: "address", label: "Address", full: true, placeholder: "Street, building or stall" },
-  { key: "manager", label: "Manager (optional)", full: true, placeholder: "Name shown on the branch card" },
+  {
+    key: "manager",
+    label: "Manager (optional)",
+    full: true,
+    placeholder: "Name shown on the branch card",
+  },
 ];
 
 const emptyValues: FormValues = { name: "", city: "", address: "", phone: "", manager: "" };
@@ -43,9 +53,11 @@ export function BranchesPage() {
   const totalRevenue = branches.reduce((sum, branch) => sum + branch.monthlyRevenue, 0);
   const totalStock = branches.reduce((sum, branch) => sum + branch.stockValue, 0);
   const isAdmin = user ? canManageCashiers(user.role) : false;
-  const accountsFor = (branchId: string) => accounts.filter((account) => account.branchId === branchId).length;
+  const accountsFor = (branchId: string) =>
+    accounts.filter((account) => account.branchId === branchId).length;
 
-  const change = (key: string, value: string) => setValues((current) => ({ ...current, [key]: value }));
+  const change = (key: string, value: string) =>
+    setValues((current) => ({ ...current, [key]: value }));
 
   const openCreate = () => {
     setEditing(null);
@@ -130,11 +142,38 @@ export function BranchesPage() {
         }
       />
 
-      <section aria-label="Branch summary" className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 xl:gap-[14px]">
-        <StatCard icon={Store} title="Branches" value={String(branches.length)} note="in Supabase" color="var(--chart-1)" />
-        <StatCard icon={Wallet} title="Monthly revenue" value={formatKes(totalRevenue)} note="all locations" color="var(--chart-2)" />
-        <StatCard icon={Building2} title="Stock value" value={formatKes(totalStock)} note="retail valuation" color="var(--chart-3)" />
-        <StatCard icon={Users} title="Team" value={String(branches.reduce((sum, branch) => sum + branch.staff, 0))} note="across locations" color="var(--chart-4)" />
+      <section
+        aria-label="Branch summary"
+        className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 xl:gap-[14px]"
+      >
+        <StatCard
+          icon={Store}
+          title="Branches"
+          value={String(branches.length)}
+          note="in Supabase"
+          color="var(--chart-1)"
+        />
+        <StatCard
+          icon={Wallet}
+          title="Monthly revenue"
+          value={formatKes(totalRevenue)}
+          note="all locations"
+          color="var(--chart-2)"
+        />
+        <StatCard
+          icon={Building2}
+          title="Stock value"
+          value={formatKes(totalStock)}
+          note="retail valuation"
+          color="var(--chart-3)"
+        />
+        <StatCard
+          icon={Users}
+          title="Team"
+          value={String(branches.reduce((sum, branch) => sum + branch.staff, 0))}
+          note="across locations"
+          color="var(--chart-4)"
+        />
       </section>
 
       <section aria-label="Branch cards" className="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -148,7 +187,9 @@ export function BranchesPage() {
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <h3 className="truncate font-display text-[16px] font-semibold text-card-foreground">{branch.name}</h3>
+                  <h3 className="truncate font-display text-[16px] font-semibold text-card-foreground">
+                    {branch.name}
+                  </h3>
                   <p className="mt-1 flex items-center gap-1 text-[10px] text-muted-foreground">
                     <MapPin aria-hidden="true" className="size-3" />
                     {branch.address ? `${branch.address}, ${branch.city}` : branch.city}
@@ -160,19 +201,28 @@ export function BranchesPage() {
               <dl className="mt-4 grid grid-cols-2 gap-2 text-[11px]">
                 <div className="rounded-md border border-border p-2">
                   <dt className="text-[10px] text-muted-foreground">Monthly revenue</dt>
-                  <dd className="mt-0.5 font-semibold text-card-foreground">{formatKes(branch.monthlyRevenue)}</dd>
+                  <dd className="mt-0.5 font-semibold text-card-foreground">
+                    {formatKes(branch.monthlyRevenue)}
+                  </dd>
                 </div>
                 <div className="rounded-md border border-border p-2">
                   <dt className="text-[10px] text-muted-foreground">Stock value</dt>
-                  <dd className="mt-0.5 font-semibold text-card-foreground">{formatKes(branch.stockValue)}</dd>
+                  <dd className="mt-0.5 font-semibold text-card-foreground">
+                    {formatKes(branch.stockValue)}
+                  </dd>
                 </div>
               </dl>
 
               <div className="mt-3">
                 <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                  <span className="block h-full rounded-full bg-amber" style={{ width: `${Math.max(share, 5)}%` }} />
+                  <span
+                    className="block h-full rounded-full bg-amber"
+                    style={{ width: `${Math.max(share, 5)}%` }}
+                  />
                 </div>
-                <p className="mt-1.5 text-[10px] text-muted-foreground">{share}% of recorded branch revenue</p>
+                <p className="mt-1.5 text-[10px] text-muted-foreground">
+                  {share}% of recorded branch revenue
+                </p>
               </div>
 
               <div className="mt-4 space-y-1.5 border-t border-border pt-3 text-[11px] text-muted-foreground">
@@ -194,7 +244,13 @@ export function BranchesPage() {
                       Add branch account
                     </Link>
                   </Button>
-                  <Button type="button" variant="outline" size="sm" className="h-8 gap-1 px-2 text-[10px]" onClick={() => openEdit(branch)}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 gap-1 px-2 text-[10px]"
+                    onClick={() => openEdit(branch)}
+                  >
                     <Pencil aria-hidden="true" className="size-3" />
                     Edit
                   </Button>
