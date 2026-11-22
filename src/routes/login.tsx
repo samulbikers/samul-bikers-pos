@@ -163,7 +163,15 @@ function LoginPage() {
               </p>
             )}
 
-            <Button type="submit" disabled={submitting} className="h-10 w-full gap-2 text-[12px]">
+            <Button
+              type="submit"
+              disabled={submitting}
+              className="login-submit h-10 w-full gap-2 text-[12px]"
+              style={{
+                backgroundColor: "var(--primary, #1c2230)",
+                color: "var(--primary-foreground, #ffffff)",
+              }}
+            >
               {submitting ? "Signing in..." : "Sign in"}
               <ArrowRight aria-hidden="true" className="size-4" />
             </Button>

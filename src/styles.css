@@ -215,6 +215,13 @@
     font-family: var(--font-sans);
   }
 
+  /* Fallback colours keep the sign-in action visible even if theme tokens fail to load. */
+  .login-submit {
+    background-color: var(--primary, #1c2230);
+    color: var(--primary-foreground, #ffffff);
+    border: 1px solid var(--primary, #1c2230);
+  }
+
   .dashboard-chart-svg {
     display: block;
     height: 100%;
